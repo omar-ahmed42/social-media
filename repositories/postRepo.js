@@ -1,18 +1,48 @@
-const {cassandraClient} = require("../db/connect");
+const {driverSession} = require("../db/connect");
 const {v4: uuidv4} = require('uuid');
 const fs = require("fs");
 const path = require("path");
 const {finished} = require("stream/promises");
 const {isValidMedia} = require("../utils/validators/media");
 const {parseFileExtension} = require("../utils/parsers/file");
-const {Uuid} = require('cassandra-driver').types;
-var cache = require('../cache/memoryCache')();
+
+// TODO: Implement Privacy and Post Slicing
+// TODO: (post:POST) -[NOT_VISIBLE_TO]-> (person:PERSON)
+// TODO: (post:POST) -[ONLY_VISIBLE_TO]-> (person:PERSON)
+// TODO: IF (post:POST) -[ONLY_VISIBLE_TO]-> (friends:FRIENDS) THEN (friend:PERSON)<-[friends_with:FRIENDS_WITH]-> (poster:Person) -[posts:POSTS]-> (post:POST)
+// TODO: IF (post:POST) -[ONLY_VISIBLE_TO]-> (person:PERSON) THEN (person)
+// if condition for other privacy rules like "friends"
+
+async function fetchNewsfeed(userId, size, lastSeenPostId) {
+    // TODO: handle case: User follows another user who posts public posts
+    // TODO: Use machine learning in fetching the newsfeed
+    try {
+        let res = await driverSession.run(`
+        MATCH (person:PERSON) WHERE ID(person) = $userId
+        MATCH (someone:PERSON) -[POSTS]-> (post:POST) -[ONLY_VISIBLE_TO]-> (person)
+        WHERE ID(post) > $lastSeenPostId
+        OR
+        MATCH (person) <-[FRIENDS_WITH]-> (someone:PERSON) -[POSTS]-> (post:POST) -[ONLY_VISIBLE_TO]-> (friends:FRIENDS)
+        WHERE ID(post) > $lastSeenPostId
+        RETURN (post)
+        LIMIT $size
+    `, {userId: userId, lastSeenPostId: lastSeenPostId ? lastSeenPostId : 0, size: size ? size : 15})
+
+        return res.records.map(record => record._fields[0].properties);
+    } catch (e) {
+        console.error('ERROR: ' + e);
+        console.error('ERROR_CODE: ' + e.code);
+    }
+}
 
 async function findPostById(postId) {
-    const query = 'SELECT CAST(postid AS text) AS id, content, media, userId, creationdate FROM Posts WHERE postId = ?';
     try {
-        let res = await cassandraClient.execute(query, [postId], {prepare: true, isIdempotent: true});
-        return res.rows[0];
+        const res = await driverSession.run(
+            `
+        MATCH (post:POST) WHERE ID(post) = $postId
+        RETURN (post)`, {postId: postId}
+        )
+        return res.records.map(record => record._fields[0].properties);
 
     } catch (e) {
         console.error('ERROR: ' + e);
@@ -20,94 +50,88 @@ async function findPostById(postId) {
     }
 }
 
-async function deletePostById(userId, postId){
-    const query = 'DELETE FROM Posts WHERE userId = ? AND postId = ?';
-    try{
-        await cassandraClient.execute(query, [userId, postId], {prepare: true});
-    }
-    catch(e)
-    {
+async function deletePostById(userId, postId) {
+    try {
+        await driverSession.run(
+            `
+            MATCH (person: PERSON) WHERE ID(person) = $userId
+            MATCH (person) -[POSTS]-> (post:POST) WHERE ID(post) = $postId
+            DETACH DELETE (post)
+            `, {userId: userId, postId: postId}
+        )
+    } catch (e) {
         console.error('ERROR: ' + e);
         console.error('ERROR_CODE: ' + e.code);
     }
 }
 
-async function addPost(userId, msg){
+async function addPost(userId, msg) {
     let urls = await Promise.all((msg.media).map(async (file) => {
-            const {createReadStream, filename, mimetype, encoding} = await file;
+        const {createReadStream, filename, mimetype, encoding} = await file;
 
-            const fileExtension = parseFileExtension(filename);
-            if (!isValidMedia(fileExtension)) {
-                // TODO: Throw error
-                throw new Error('Invalid media type');
-            }
+        const fileExtension = parseFileExtension(filename);
+        if (!isValidMedia(fileExtension)) {
+            // TODO: Throw error
+            throw new Error('Invalid media type');
+        }
 
-            const newFilename = uuidv4() + '_' + Date.now() + fileExtension; // Generation a unique filename
+        const newFilename = uuidv4() + '_' + Date.now() + fileExtension; // generates a unique filename
 
-            const stream = createReadStream();
-            const out = fs.createWriteStream(path.join(__dirname, `/../FileUpload/Posts/${newFilename}`));
-            stream.pipe(out);
-            await finished(out);
-            return `http://localhost:3000/FileUpload/Posts/${newFilename}`
-        }));
+        const stream = createReadStream();
+        const out = fs.createWriteStream(path.join(__dirname, `/../FileUpload/Posts/${newFilename}`));
+        stream.pipe(out);
+        await finished(out);
+        return `http://localhost:3000/FileUpload/Posts/${newFilename}`
+    }));
 
-    if (!urls && msg.content.trim().length == 0){
+    if (!urls && msg.content.trim().length === 0) {
         // TODO: Throw Error
         throw new Error('Empty Post')
     }
 
-    const query = 'INSERT INTO Posts(postId, userId, content, media, creationDate) VALUES(?, ?, ?, ?, toTimeStamp(now()))';
-    let postId = Uuid.random();
     try {
-        await cassandraClient.execute(query, [postId, userId, msg.content, urls], {prepare: true});
+        await driverSession.run(`
+    CREATE (
+    MATCH (person:PERSON) WHERE ID(person) = $userId 
+    CREATE (post:POST {post.content: $content, post.media: $media, post.creationDate: timestamp()})<-[POSTS]- (person)`
+            , {userId: userId, content: msg.content, media: urls});
         return true;
-    }catch(e){
+    } catch (e) {
         console.error('ERROR: ' + e);
         console.error('ERROR_CODE: ' + e.code);
         return false;
     }
 }
 
-async function getSliceOfUserPosts(userId){
-
+async function getSliceOfUserPosts(userId, size, offset) {
     try {
-        const query = 'SELECT CAST(postid AS text) AS id, content, media, userId, creationdate FROM Posts WHERE userId= ?';
-        const userPostsPageState = cache.get('userPostsPageState');
-        console.log('USER_POSTS_PAGE_STATE: ' + userPostsPageState);
-        const options = userPostsPageState == undefined
-            ?
-            {prepare: true, autoPage: true, fetchSize: 6}
-            :
-            {prepare: true, autoPage: true, fetchSize: 6, pageState: userPostsPageState}
+        let res = await driverSession.run(
+            `
+                MATCH (person:PERSON) WHERE ID(person) = $userId
+                MATCH (person) -[POSTS]-> (post:POST)
+                RETURN post
+                SKIP $offset
+                LIMIT $size
+            `, {userId: userId, offset: offset, size: size}
+        );
 
-        let res = await cassandraClient.execute(query, [userId], options);
-
-        cache.set('userPostsPageState', res.pageState);
-        console.log(res.rows)
-        return res.rows;
-    }catch (e){
+        return res.records.map(record => record._fields[0].properties);
+    } catch (e) {
         console.error('ERROR: ' + e);
         console.error('ERROR_CODE: ' + e.code);
     }
 }
 
-async function getSliceOfPostComments(postId, size) {
+async function getSliceOfPostComments(postId, size, offset) {
     try {
-        const query = 'SELECT * FROM Comments WHERE postId = ?';
-        let comments = await cassandraClient.execute(query, [postId],
-            {prepare: true, autoPage: true, fetchSize: size, pageState: true},
-            (err, res) => {
-                if (err) {
-                    //TODO: Handle error
-                    console.error(err)
-                    // throw new Error('error');
-                }
-                //TODO: Handle success
-                console.log("SUCCESS: " + res);
-                return res;
-            });
-        console.log(comments);
-        return comments;
+        let res = driverSession.run(`
+            MATCH (post:POST) WHERE ID(post) = $postId
+            MATCH (comment:COMMENT) -[COMMENTS_ON]-> (post)
+            RETURN comment
+            SKIP $offset
+            LIMIT $size
+        `, {postId: postId, offset: offset, size: size});
+        return res.records.map(record => record._fields[0].properties);
     } catch (e) {
         console.error('ERROR: ' + e);
         console.error('ERROR_CODE: ' + e.code);
@@ -115,14 +139,14 @@ async function getSliceOfPostComments(postId, size) {
 }
 
 async function findPostByCommentId(commentId) {
-    const query = 'SELECT postId FROM COMMENTS WHERE commentId = ?';
     try {
-        let res = await cassandraClient.execute(query, [commentId], {prepare: true, isIdempotent: true});
-        const postId = res.rows[0].postid;
-
-        const postQuery = 'SELECT postId, content, creationDate, userId FROM POSTS WHERE postId = ?';
-        res = await cassandraClient.execute(postQuery, [postId], {prepare: true, isIdempotent: true});
-        return res.rows[0];
+        let res = await driverSession.run(
+            `
+            MATCH (comment:COMMENT) WHERE ID(comment) = $commentId
+            MATCH (comment) -[COMMENTS_ON]->(post:POST)
+            RETURN post`
+        )
+        return res.records.map(record => record._fields[0].properties)
 
     } catch (e) {
         console.error('ERROR: ' + e);
@@ -138,5 +162,6 @@ module.exports = {
     deletePostById,
     getSliceOfPostComments,
     findPostByCommentId,
-    getSliceOfUserPosts
+    getSliceOfUserPosts,
+    fetchNewsfeed
 }

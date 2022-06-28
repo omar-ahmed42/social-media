@@ -1,13 +1,12 @@
-const {cassandraClient} = require("../db/connect");
+const {cassandraClient, driverSession} = require("../db/connect");
 const fs = require("fs");
 const path = require("path");
 const {finished} = require("stream/promises");
 const {parseFileExtension} = require("../utils/parsers/file");
 const {isValidMedia} = require("../utils/validators/media");
 const {v4: uuidv4} = require("uuid");
-const {Uuid} = require('cassandra-driver').types;
 
-async function addComment(msg) {
+async function addComment(userId, msg) {
     try {
         let urls = await Promise.all((msg.media).map(async (file) => {
             const {createReadStream, filename, mimetype, encoding} = await file;
@@ -27,14 +26,19 @@ async function addComment(msg) {
             return `http://localhost:3000/FileUpload/Comments/${newFilename}`
         }));
 
-        if (!urls || msg.content.length === 0){
+        if (!urls && msg.content.length === 0) {
             // TODO: Throw Error
             throw new Error('Empty comment')
         }
 
-        const query = 'INSERT INTO Comments(postId, commentId, userId, content, media, creationDate) VALUES (?, ?, ?, ?, ?, toTimeStamp(now()))';
-        let commentId = Uuid.random();
-        await cassandraClient.execute(query, [msg.postId, commentId, msg.userId, msg.content, urls], {prepare: true});
+        await driverSession.run(
+            `
+            MATCH (person:PERSON) WHERE ID(person) = $userId
+            MATCH (post:POST) WHERE ID(post) = $postId
+            CREATE (person) -[writes_comment:WRITES_COMMENT]-> (comment:COMMENT {content: $content, media: $media, creationDate: timestamp()})
+            CREATE (comment) -[comments_on:COMMENTS_ON]-> (post)`,
+            {userId: userId, content: msg.content, media: urls, postId: msg.postId}
+        )
         return true;
     } catch (e) {
         console.error('ERROR: ' + e);
@@ -43,10 +47,18 @@ async function addComment(msg) {
     }
 }
 
-async function deleteComment(commentId) {
+async function deleteComment(userId, commentId) {
     try {
-        const query = 'DELETE FROM Comments WHERE commentId = ?';
-        await cassandraClient.execute(query, [commentId], {prepare: true});
+        await driverSession.run(
+            `
+            MATCH (person: PERSON) WHERE ID(person) = $userId
+            MATCH (person) -[writes_comment:WRITES_COMMENT]-> (comment:COMMENT) WHERE ID(comment) = $commentId
+            MATCH (comment) -[comments_on:COMMENTS_ON]-> (post:POST)
+            DETACH DELETE writes_comment
+            DETACH DELETE (comment)
+            DETACH DELETE comments_on
+            `, {userId: userId, commentId: commentId}
+        )
         return true;
     } catch (e) {
         console.error('ERROR: ' + e);
@@ -56,10 +68,12 @@ async function deleteComment(commentId) {
 }
 
 async function findCommentById(commentId) {
-    const query = 'SELECT * FROM Comments WHERE commentId = ?';
     try {
-        let res = await cassandraClient.execute(query, [commentId], {prepare: true, isIdempotent: true});
-        return res.rows[0];
+        let res = await driverSession.run(`
+        MATCH (comment:COMMENT) WHERE ID(comment) = $commentId
+        RETURN (comment)
+    `, {commentId: commentId});
+        return res.records.map(record => record._fields[0].properties);
     } catch (e) {
         console.error('ERROR: ' + e);
         console.error('ERROR_CODE: ' + e.code);

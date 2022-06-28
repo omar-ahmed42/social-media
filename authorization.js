@@ -38,20 +38,20 @@ const permissions =  shield({
 
     Mutation: {
         addPost: isAuthenticated,
-        deletePost: isTheSameAuthenticatedUser,
-        addComment: isTheSameAuthenticatedUser,
-        deleteComment: isTheSameAuthenticatedUser,
-        blockUser: isTheSameAuthenticatedUser,
-        unblockUser: isTheSameAuthenticatedUser,
-        deleteFriendship: isTheSameAuthenticatedUser,
+        deletePost: isAuthenticated,
+        addComment: isAuthenticated,
+        deleteComment: isAuthenticated,
+        blockUser: isAuthenticated,
+        unblockUser: isAuthenticated,
+        deleteFriendship: isAuthenticated,
         declineFriendRequest: isTheSameAuthenticatedUser,
         cancelFriendRequest: isTheSameAuthenticatedUser,
         acceptFriendRequest: isTheSameAuthenticatedUser,
         sendFriendRequest: isTheSameAuthenticatedUser,
-        reactToPost: isTheSameAuthenticatedUser,
-        removeReactionFromPost: isTheSameAuthenticatedUser,
-        reactToComment: isTheSameAuthenticatedUser,
-        removeReactionFromComment: isTheSameAuthenticatedUser,
+        reactToPost: isAuthenticated,
+        removeReactionFromPost: isAuthenticated,
+        reactToComment: isAuthenticated,
+        removeReactionFromComment: isAuthenticated,
         addReactionType: isTheSameAuthenticatedUser
     }
 });

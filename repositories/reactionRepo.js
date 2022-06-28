@@ -1,49 +1,69 @@
-const {cassandraClient, mysqlQuery, mysqlConnection} = require("../db/connect");
-const {Uuid} = require('cassandra-driver').types;
+const {mysqlQuery, mysqlConnection, driverSession} = require("../db/connect");
 
-async function reactToPost(msg) {
+async function reactToPost(userId, msg) {
     try {
-        const query = 'INSERT INTO Post_Reactions(postId, reactionTypeId, reactionId, userId, creationDate) VALUES (?, ?, ?, ?, toTimeStamp(now()))';
-        let reactionId = Uuid.random();
-        await cassandraClient.execute(query, [msg.postId, msg.reactionTypeId, reactionId, msg.userId], {prepare: true});
+        await driverSession.run(
+            `
+            MATCH (person:PERSON) WHERE ID(person) = $userId
+            CREATE (person) -[reacts_to:REACTS_TO {reactionType: $reactionType, creationDate: timestamp()}]-> (post:POST) WHERE ID(post) = $postId
+            `, {userId: userId, reactionType: msg.reactionTypeId, postId: msg.postId}
+        )
     } catch (e) {
         console.error('CODE: ' + e.code);
         console.error(e);
     }
 }
 
-async function removeReactionFromPost(msg) {
+async function removeReactionFromPost(userId, msg) {
     try {
-        const query = 'DELETE FROM Post_Reactions WHERE postId = ? AND reactionId = ?';
-        await cassandraClient.execute(query, [msg.postId, msg.reactionId], {prepare: true});
+        await driverSession.run(`
+        MATCH (person:PERSON) WHERE ID(person) = $userId
+        MATCH (person) -[reacts_to:REACTS_TO]-> (post:POST) WHERE ID(post) = $postId AND ID(reacts_to) = $reactionId
+        DETACH DELETE reacts_to`, {userId: userId, postId: msg.postId, reactionId: msg.reactionId})
+        return true;
     } catch (e) {
         console.error('CODE: ' + e.code);
         console.error(e);
+        return false;
     }
 }
 
-async function reactToComment(msg) {
+async function reactToComment(userId, msg) {
     try {
-        const query = 'INSERT INTO Comment_Reactions(commentId, reactionTypeId, reactionId, userId, creationDate) VALUES (?, ?, ?, ?, toTimeStamp(now()))';
-        let reactionId = Uuid.random();
-        await cassandraClient.execute(query, [msg.commentId, msg.reactionTypeId, reactionId, msg.userId], {prepare: true});
+        await driverSession.run(
+            `
+            MATCH (person:PERSON) WHERE ID(person) = $userId
+            CREATE (person) -[reacts_to:REACTS_TO {reactionType: $reactionType}]->(comment:COMMENT) WHERE ID(comment) = $commentId`
+            , {userId: userId, reactionType: msg.reactionTypeId, commentId: msg.commentId}
+        );
+        return true;
+
     } catch (e) {
         console.error('CODE: ' + e.code);
         console.error(e);
+        return false;
     }
 }
 
-async function removeReactionFromComment(msg) {
+async function removeReactionFromComment(userId, msg) {
     try {
-        const query = 'DELETE FROM Comment_Reactions WHERE commentId = ? AND reactionId = ?';
-        await cassandraClient.execute(query, [msg.commentId, msg.reactionId], {prepare: true});
+        await driverSession.run(
+            `
+            MATCH (person:PERSON) WHERE ID(person) = $userId
+            MATCH (person) -[reacts_to:REACTS_TO]-> (comment:COMMENT) WHERE ID(comment) = $commentId AND ID(reacts_to) = $reactionId
+            DETACH DELETE reacts_to`
+            , {userId: userId, commentId: msg.commentId, reactionId: msg.reactionId}
+        )
+
+        return true;
     } catch (e) {
         console.error('CODE: ' + e.code);
         console.error(e);
+        return false;
     }
 }
 
-async function addReactionType(reactionTypeName){
+async function addReactionType(reactionTypeName) {
     try {
         const query = 'INSERT INTO ReactionType(reactionTypeName) VALUES (?)';
         mysqlConnection.beginTransaction(err => {
@@ -54,10 +74,13 @@ async function addReactionType(reactionTypeName){
         });
         await mysqlQuery(query, [reactionTypeName]);
         mysqlConnection.commit();
-    } catch (e){
+        return true;
+    } catch (e) {
         console.error('CODE: ' + e.code);
         console.error(e);
-        mysqlConnection.rollback(function(){});
+        mysqlConnection.rollback(function () {
+        });
+        return false;
     }
 }
 

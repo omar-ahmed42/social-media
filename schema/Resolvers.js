@@ -1,14 +1,28 @@
-const { GraphQLUpload } = require('graphql-upload');
-const fs = require("fs");
-const { finished }  = require('stream/promises');
-const path = require("path");
-const {getSliceOfPostComments, findPostByCommentId, getSliceOfUserPosts, addPost, deletePostById, findPostById} = require("../repositories/postRepo");
-const {findUserByPostId, findUserByCommentId, addPerson, deletePersonById, findPersonById} = require("../repositories/personRepo");
+const {GraphQLUpload} = require('graphql-upload');
+require("fs");
+require("path");
+const {
+    getSliceOfPostComments, findPostByCommentId, getSliceOfUserPosts, addPost, deletePostById, findPostById,
+    fetchNewsfeed
+} = require("../repositories/postRepo");
+const {
+    findUserByPostId,
+    findUserByCommentId,
+    addPerson,
+    deletePersonById,
+    findPersonById
+} = require("../repositories/personRepo");
 const {addComment, deleteComment, findCommentById} = require("../repositories/commentRepo");
 const {blockUser, unblockUser, findAllBlockedUsers} = require("../repositories/blockRepo");
 const {findFriends, findSliceOfFriends, deleteFriendship} = require("../repositories/friendRepo");
-const {deleteFriendRequest, acceptFriendRequest} = require("../repositories/friendRequestRepo");
-const {reactToPost, reactToComment, removeReactionFromComment, removeReactionFromPost, addReactionType} = require("../repositories/reactionRepo");
+const {deleteFriendRequest, acceptFriendRequest, declineFriendRequest} = require("../repositories/friendRequestRepo");
+const {
+    reactToPost,
+    reactToComment,
+    removeReactionFromComment,
+    removeReactionFromPost,
+    addReactionType
+} = require("../repositories/reactionRepo");
 const {GraphQLScalarType, Kind} = require("graphql");
 
 const dateScalar = new GraphQLScalarType({
@@ -19,7 +33,7 @@ const dateScalar = new GraphQLScalarType({
     },
     serialize(value) {
         const offset = value.getTimezoneOffset()
-        value = new Date(value.getTime() - (offset*60*1000))
+        value = new Date(value.getTime() - (offset * 60 * 1000))
         return value.toISOString().split('T')[0] // value sent to the client
     },
     parseLiteral(ast) {
@@ -50,16 +64,20 @@ const resolvers = {
             return findPersonById(args.userId);
         },
 
-        async getPostById(parent, args){
+        async getPostById(parent, args) {
             return await findPostById(args.id);
         },
 
-        async getCommentById(parent, args){
+        async getCommentById(parent, args) {
             return findCommentById(args.id);
         },
 
-        async getAllBlockedUsers(parent, args){
+        async getAllBlockedUsers(parent, args) {
             return findAllBlockedUsers(args.id);
+        },
+
+        async getNewsFeed(parent, args, {user}) {
+            return fetchNewsfeed(user, args.size, args.lastSeenPostId)
         }
 
     },
@@ -98,76 +116,72 @@ const resolvers = {
             return await deletePersonById(args.id);
         },
 
-        addPost: async function (parent, args, { user }) {
+        addPost: async function (parent, args, {user}) {
             return await addPost(user, args);
         },
 
-        async deletePost(parent, args, { user }) {
-            await deletePostById(args.userId, args.postId);
+        async deletePost(parent, args, {user}) {
+            await deletePostById(user, args.postId);
             return true;
         },
 
-        addComment: async function (parent, args, { user }) {
-            return await addComment(args);
+        addComment: async function (parent, args, {user}) {
+            return await addComment(user, args);
         },
 
-        deleteComment: async function (parent, args, { user }) {
-            return await deleteComment(args.id);
+        deleteComment: async function (parent, args, {user}) {
+            return await deleteComment(user, args.id);
         },
 
-        async blockUser(parent, args, { user }) {
-            await blockUser(args.userId, args.userToBeBlockedId);
+        async blockUser(parent, args, {user}) {
+            await blockUser(user, args.userToBeBlockedId);
             return true;
         },
 
-        async unblockUser(parent, args, { user }) {
-            await unblockUser(args.userId, args.userToBeBlockedId);
+        async unblockUser(parent, args, {user}) {
+            await unblockUser(user, args.userToBeBlockedId);
             return true;
         },
 
-        async deleteFriendship(parent, args, { user }) {
-            await deleteFriendship(args.userId, args.friendId);
+        async deleteFriendship(parent, args, {user}) {
+            await deleteFriendship(user, args.friendId);
             return true;
         },
 
-        async declineFriendRequest(parent, args, { user }) {
-            await deleteFriendship(args.senderId, args.receiverId);
+        async declineFriendRequest(parent, args, {user}) {
+            await declineFriendRequest(args.senderId, user);
             return true;
         },
 
-        async cancelFriendRequest(parent, args, { user }) {
-            await deleteFriendRequest(args.receiverId, args.senderId);
+        async cancelFriendRequest(parent, args, {user}) {
+            await deleteFriendRequest(user, args.receiverId);
             return true;
         },
 
-        async acceptFriendRequest(parent, args, { user }) {
-            await acceptFriendRequest(args.senderId, args.receiverId);
+        async acceptFriendRequest(parent, args, {user}) {
+            await acceptFriendRequest(args.senderId, user);
             return true;
         },
 
-        async reactToPost(parent, args, { user }) {
-            await reactToPost(args);
+        async reactToPost(parent, args, {user}) {
+            await reactToPost(user, args);
             return true;
         },
 
-        async removeReactionFromPost(parent, args, { user }) {
-            await removeReactionFromPost(args);
-            return true;
+        async removeReactionFromPost(parent, args, {user}) {
+            return await removeReactionFromPost(user, args);
         },
 
-        async reactToComment(parent, args, { user }) {
-            await reactToComment(args);
-            return true;
+        async reactToComment(parent, args, {user}) {
+            return await reactToComment(user, args);
         },
 
-        async removeReactionFromComment(parent, args, { user }) {
-            await removeReactionFromComment(args);
-            return true;
+        async removeReactionFromComment(parent, args, {user}) {
+            return await removeReactionFromComment(args);
         },
 
-        async addReactionType(parent, args, { user }) {
-            await addReactionType(args.reactionTypeName);
-            return true;
+        async addReactionType(parent, args, {user}) {
+            return await addReactionType(args.reactionTypeName);
         }
     }
 }

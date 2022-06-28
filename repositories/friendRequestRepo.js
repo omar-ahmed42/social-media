@@ -2,7 +2,7 @@ const driverSession = require('../db/connect.js').driverSession;
 
 //TODO: Pagination
 
-async function findAllReceivedFriendRequests(receiverId){
+async function findAllReceivedFriendRequests(receiverId) {
     let friendRequests = await driverSession.run(`
     MATCH (receiver:PERSON) WHERE ID(receiver) = $receiverId
     MATCH (sender:PERSON) -[:FRIEND_REQUEST]-> (receiver)
@@ -12,7 +12,7 @@ async function findAllReceivedFriendRequests(receiverId){
     return friendRequests;
 }
 
-async function findAllSentFriendRequests(senderId){
+async function findAllSentFriendRequests(senderId) {
     let friendRequests = await driverSession.run(
         `
         MATCH (sender:PERSON) WHERE ID(sender) = $senderId
@@ -23,7 +23,7 @@ async function findAllSentFriendRequests(senderId){
     return friendRequests;
 }
 
-async function sendFriendRequest(senderId, receiverId){
+async function sendFriendRequest(senderId, receiverId) {
     await driverSession.run(
         `
         MATCH (sender:PERSON) WHERE ID(sender)= $senderId
@@ -32,7 +32,7 @@ async function sendFriendRequest(senderId, receiverId){
     );
 }
 
-async function acceptFriendRequest(senderId, receiverId){
+async function acceptFriendRequest(senderId, receiverId) {
     await driverSession.run(
         `
         MATCH (sender:PERSON) WHERE ID(sender) = $senderId
@@ -43,7 +43,7 @@ async function acceptFriendRequest(senderId, receiverId){
     );
 }
 
-async function deleteFriendRequest(senderId, receiverId){
+async function deleteFriendRequest(senderId, receiverId) {
     // Sender cancels the sent friend request
     await driverSession.run(
         `
@@ -55,7 +55,7 @@ async function deleteFriendRequest(senderId, receiverId){
     );
 }
 
-async function declineFriendRequest(senderId, receiverId){
+async function declineFriendRequest(senderId, receiverId) {
     // Receiver cancels the received friend request
     await driverSession.run(
         `
@@ -72,5 +72,6 @@ module.exports = {
     findAllSentFriendRequests,
     sendFriendRequest,
     acceptFriendRequest,
+    declineFriendRequest,
     deleteFriendRequest
 }

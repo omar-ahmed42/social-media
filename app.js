@@ -1,8 +1,11 @@
-const {ApolloServer} = require('apollo-server-express');
+const {ApolloServer} = require('@apollo/server');
+const {ApolloServerPluginDrainHttpServer} = require('@apollo/server/plugin/drainHttpServer');
+const { expressMiddleware } = require('@apollo/server/express4');
 const {typeDefs} = require('./schema/TypeDefs');
 const {resolvers} = require('./schema/Resolvers');
 const passport = require('passport');
 const express = require('express');
+const http = require('http');
 const {permissions} = require('./authorization');
 const {graphqlUploadExpress} = require("graphql-upload");
 const {startDBs} = require("./db/connect");
@@ -13,6 +16,7 @@ const {storeUserSocket, sendMessage, discardUserSocket} = require("./sockets/mes
 const cors = require("cors");
 const {Server} = require("socket.io");
 const app = express();
+const httpServer = http.createServer(app);
 require('./config/passport')(passport);
 
 require('dotenv').config();
@@ -29,34 +33,30 @@ passport.deserializeUser(function (id, done) {
 
 async function startServer() {
     app.use(passport.initialize());
-    app.use('/graphql', (req, res, next) => {
+    const schemaWithAuthorization =
+        applyMiddleware(makeExecutableSchema({typeDefs, resolvers}), permissions);
+
+    const server = new ApolloServer({schema: schemaWithAuthorization, plugins: [ApolloServerPluginDrainHttpServer({httpServer})]});
+    await server.start();
+    
+    app.use(graphqlUploadExpress());
+    app.use('/graphql', cors(), (req, res, next) => {
         passport.authenticate('jwt', {session: false}, (err, user, info) => {
             if (user) {
                 req.user = user;
             }
             next();
         })(req, res, next)
-    })
-
-
-    const schemaWithAuthorization =
-        applyMiddleware(makeExecutableSchema({typeDefs, resolvers}), permissions);
-    const server = new ApolloServer({
-        schema: schemaWithAuthorization,
+    }, expressMiddleware(server, {
         context: ({req}) => {
             const user = req.user || null;
             return {user};
-        }
-    });
+         }
+     }));
 
-    await server.start();
-
-    app.use(graphqlUploadExpress());
-    server.applyMiddleware({app, path: '/graphql'});
-
-    await startMessenger()
+    await new Promise((resolve) => httpServer.listen({port: process.env.SERVER_PORT}, resolve));
+    // await startMessenger()
     await startDBs();
-
 }
 
 startServer();

@@ -58,7 +58,7 @@ const typeDefs = gql`
     
     # Mutations
     type Mutation {
-        addPerson(firstName: String!, lastName: String!, email: String!, password: String!, dateOfBirth: String!, role: [String]!): Boolean!
+        addPerson(firstName: String!, lastName: String!, email: String!, password: String!, dateOfBirth: String!, roles: [String]!): Boolean!
         deletePerson(id: ID!): Boolean
         addPost(content: String, media: [Upload]): Boolean
         deletePost(postId: ID!): Boolean

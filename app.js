@@ -12,6 +12,8 @@ const {startDBs} = require("./db/connect");
 const {router} = require("./routes/authentication");
 const {applyMiddleware} = require("graphql-middleware");
 const {makeExecutableSchema} = require("@graphql-tools/schema");
+const { User } = require('./models/user');
+const { Role, UserRole } = require('./models/role');
 const {storeUserSocket, sendMessage, discardUserSocket} = require("./sockets/messenger");
 const cors = require("cors");
 const {Server} = require("socket.io");
@@ -30,6 +32,12 @@ passport.serializeUser(function (user, done) {
 passport.deserializeUser(function (id, done) {
     done(null, id);
 });
+
+async function syncModels() {
+    User.sync();
+    Role.sync();
+    UserRole.sync();
+}
 
 async function startServer() {
     app.use(passport.initialize());
@@ -57,6 +65,7 @@ async function startServer() {
     await new Promise((resolve) => httpServer.listen({port: process.env.SERVER_PORT}, resolve));
     // await startMessenger()
     await startDBs();
+    await syncModels();
 }
 
 startServer();

@@ -20,7 +20,7 @@ const Role = sequelize.define(
     tableName: 'role',
     underscored: true,
     createdAt: true,
-    updatedAt: 'last_modified_at',
+    updatedAt: 'lastModifiedAt',
   }
 );
 
@@ -42,12 +42,12 @@ const UserRole = sequelize.define(
     tableName: 'user_role',
     underscored: true,
     createdAt: true,
-    updatedAt: 'last_modified_at',
+    updatedAt: 'lastModifiedAt',
   }
 );
 
-User.belongsToMany(Role, { through: UserRole });
-Role.belongsToMany(User, { through: UserRole });
+User.belongsToMany(Role, { through: UserRole, foreignKey: 'userId' });
+Role.belongsToMany(User, { through: UserRole, foreignKey: 'roleId' });
 
 module.exports = {
   Role,

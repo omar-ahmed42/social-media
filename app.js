@@ -17,6 +17,7 @@ const { Role, UserRole } = require('./models/role');
 const {storeUserSocket, sendMessage, discardUserSocket} = require("./sockets/messenger");
 const cors = require("cors");
 const {Server} = require("socket.io");
+const { FriendRequest } = require('./models/friend-request');
 const app = express();
 const httpServer = http.createServer(app);
 require('./config/passport')(passport);
@@ -37,6 +38,7 @@ async function syncModels() {
     User.sync();
     Role.sync();
     UserRole.sync();
+    FriendRequest.sync();
 }
 
 async function startServer() {

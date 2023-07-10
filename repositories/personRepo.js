@@ -3,28 +3,31 @@ const {cassandraClient, mysqlQuery} = require("../db/connect");
 const { User } = require('../models/user.js');
 const {Role} = require('../models/role.js');
 const bcrypt = require("bcrypt");
+const { Op } = require('sequelize');
 
 async function addPerson(msg) {
   const password = await hashPassword(msg.password);
-  const escapedRoleNames = msg.roles.map((roleName) => sequelize.escape(roleName));
-  sequelize.transaction(async (t1) => {
-    const user = await User.create(
+  await sequelize.transaction(async (t1) => {
+    let user = await User.create(
       {
         firstName: msg.firstName,
         lastName: msg.lastName,
         email: msg.email,
         password: password,
         dateOfBirth: new Date(msg.dateOfBirth),
-        roles: msg.roles.map((name, index) => ({
-          id: sequelize.literal(
-            `(SELECT id FROM role WHERE name = ${escapedRoleNames[index]})`
-          ),
-        })),
       },
-      { transaction: t1, include: Role }
+      { transaction: t1 }
     );
 
-    await driverSession.executeWrite((t2) => {
+    const roles = await Role.findAll({
+      where: {
+        name: { [Op.in]: msg.roles },
+      },
+    });
+
+    user.addRoles(roles);
+
+    await driverSession.executeWrite(async (t2) => {
       return t2.run(
         `
           CREATE (person:PERSON {id: $id})
@@ -40,39 +43,27 @@ async function hashPassword(passwordInPlainText){
     return bcrypt.hash(passwordInPlainText, salt);
 }
 
-//----------------------------------------------------------------------------------
-async function deletePersonById(id){
-    try {
-        mysqlConnection.beginTransaction(err => {
-            if (err){
-                console.log('err: ' + err);
-                throw new Error('An error has occurred while starting the transaction');
-            }
-        });
-        const deletePersonQuery = `DELETE FROM Person WHERE id = ?`;
-        await mysqlQuery(deletePersonQuery, [id]);
-        await driverSession.run(`
-     MATCH (person:PERSON {id: $id})
-     DETACH DELETE person`, {id: id});
-        return true;
-    } catch (e) {
-        console.error('CODE: ' + e.code);
-        console.error(e);
-        mysqlConnection.rollback(function (){});
-        return false;
-    }
+async function deletePersonById(id) {
+  let rowsDeleted = 0;
+  sequelize.transaction(async (t1) => {
+    rowsDeleted = await User.destroy({ where: { id: id }, transaction: t1 });
+    driverSession.executeWrite(async (t2) =>
+      t2.run(
+        `MATCH (person:PERSON {id: $id})
+        DETACH DELETE person`,
+        { id: id }
+      )
+    );
+  });
+  return rowsDeleted >= 1;
 }
 
 async function findPersonById(id) {
-    try {
-        const query = `SELECT id, firstName, middleName, lastName, email, dateOfBirth, pr.role_fk AS role FROM PERSON 
-INNER JOIN PERSON_ROLE pr ON id = pr.person_fk WHERE id = ?`;
-        let res = await mysqlQuery(query, [id]);
-        return res[0];
-    } catch (e) {
-        console.error('CODE: ' + e.code);
-        console.error(e);
-    }
+  let user;
+  sequelize.transaction(
+    async (t1) => (user = User.findByPk(id, { transaction: t1 }))
+  );
+  return user;
 }
 
 async function findUserByCommentId(commentId){
@@ -110,5 +101,6 @@ module.exports = {
     deletePersonById,
     findPersonById,
     findUserByCommentId,
-    findUserByPostId
+    findUserByPostId,
+    hashPassword
 }

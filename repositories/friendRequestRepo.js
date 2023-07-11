@@ -1,9 +1,9 @@
 const { sequelize } = require('../db/connect.js');
 const { FriendRequest, FriendRequestStatusesEnum } = require('../models/friend-request.js');
+const { calculateOffset, calculatePageLimit, DEFAULT_PAGE, DEFAULT_PAGE_SIZE } = require('../utils/pagination.js');
 
 const driverSession = require('../db/connect.js').driverSession;
 
-const MAX_PAGE_SIZE = 50;
 
 async function findAllReceivedFriendRequests(receiverId) {
     let friendRequests = await driverSession.run(`
@@ -18,12 +18,9 @@ async function findAllReceivedFriendRequests(receiverId) {
 async function findFriendRequests(
   userId,
   friendRequestStatus = FriendRequestStatusesEnum.pending,
-  page = 0,
-  pageSize = 15
+  page = DEFAULT_PAGE,
+  pageSize = DEFAULT_PAGE_SIZE
 ) {
-  const offset = page * pageSize;
-  const limit = pageSize > MAX_PAGE_SIZE ? MAX_PAGE_SIZE : pageSize;
-
   switch (friendRequestStatus) {
     case FriendRequestStatusesEnum.pending:
     case FriendRequestStatusesEnum.cancelled:
@@ -31,8 +28,8 @@ async function findFriendRequests(
         include: { model: User, as: 'sender' },
         where: { senderId: userId, requestStatus: friendRequestStatus },
         order: ['created_at', 'DESC'],
-        offset: offset,
-        limit: limit,
+        offset: calculateOffset(page, pageSize),
+        limit: calculatePageLimit(pageSize),
       });
       break;
     case FriendRequestStatusesEnum.accepted:
@@ -41,8 +38,8 @@ async function findFriendRequests(
         include: { model: User, as: 'receiver' },
         where: { receiverId: userId, requestStatus: friendRequestStatus },
         order: ['created_at', 'DESC'],
-        offset: offset,
-        limit: limit,
+        offset: calculateOffset(page, pageSize),
+        limit: calculatePageLimit(pageSize),
       });
       break;
   }

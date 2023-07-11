@@ -18,6 +18,9 @@ const {storeUserSocket, sendMessage, discardUserSocket} = require("./sockets/mes
 const cors = require("cors");
 const {Server} = require("socket.io");
 const { FriendRequest } = require('./models/friend-request');
+const { Post } = require('./models/post');
+const { PostAttachment } = require('./models/post-attachment');
+const { Attachment } = require('./models/attachment');
 const app = express();
 const httpServer = http.createServer(app);
 require('./config/passport')(passport);
@@ -35,10 +38,13 @@ passport.deserializeUser(function (id, done) {
 });
 
 async function syncModels() {
-    User.sync();
-    Role.sync();
-    UserRole.sync();
-    FriendRequest.sync();
+    await User.sync();
+    await Role.sync();
+    await UserRole.sync();
+    await FriendRequest.sync();
+    await Post.sync();
+    await Attachment.sync();
+    await PostAttachment.sync();
 }
 
 async function startServer() {

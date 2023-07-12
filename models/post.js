@@ -47,7 +47,7 @@ Post.hasMany(PostAttachment, {foreignKey: 'postId'});
 PostAttachment.belongsTo(Post, {foreignKey: 'postId'});
 
 User.hasMany(Post, { foreignKey: 'userId' });
-Post.belongsTo(User);
+Post.belongsTo(User, {foreignKey: 'userId'});
 
 module.exports = {
   Post,

@@ -173,7 +173,7 @@ async function publishPost(userId, postId, msg) {
 
     if (!post) return null;
     if (post.getDataValue('userId') !== userId) return null; // TODO: Throw an exception
-    if (post.getDataValue('PostAttachments').length == 0) return null; // TODO: Throw an exception
+    if (post.getDataValue('PostAttachments')?.length == 0) return null; // TODO: Throw an exception
 
     const oldPostStatus = post.getDataValue('postStatus');
     post.set({ content: msg.content, postStatus: PostStatusEnum.published });

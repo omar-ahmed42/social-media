@@ -22,7 +22,7 @@ const connectSequelize = async () => {
 }
 
 var driver = neo4j.driver('neo4j://localhost',
-    neo4j.auth.basic('neo4j', 'root'));
+    neo4j.auth.basic(process.env.NEO4J_USERNAME, process.env.NEO4J_PASSWORD));
 
 var driverSession = driver.session({database: 'neo4j'});
 
@@ -39,34 +39,15 @@ const connectCassandra = async () => await cassandraClient.connect().then(()=>{
 });
 
 
-var mysqlConnection = mysql.createConnection({
-    uri:`mysql://${process.env.MYSQL_USERNAME}:${process.env.MYSQL_PASSWORD}@${process.env.MYSQL_HOST}:${process.env.MYSQL_PORT}/${process.env.MYSQL_DATABASE}`,
-    Promise: true
-});
-
-
-const connectMySQL = async () => await mysqlConnection.connect(function(err) {
-    if (err) {
-        console.error('MySQL Failed: ' + err.stack);
-        return;
-    }
-    console.log("MySQL Connected");
-});
-
 async function startDBs(){
     await connectCassandra();
     await connectSequelize();
-    await connectMySQL();
-
 }
-
-const mysqlQuery = util.promisify(mysqlConnection.query).bind(mysqlConnection);
 
 module.exports = {
     sequelize,
     driverSession,
     cassandraClient,
-    mysqlConnection,
-    mysqlQuery,
+    neo4j,
     startDBs
 }

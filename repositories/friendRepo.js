@@ -1,18 +1,42 @@
 const { Op } = require('sequelize');
 const { User } = require('../models/user.js');
 const { DEFAULT_PAGE_SIZE, DEFAULT_PAGE, calculateOffset, calculatePageLimit } = require('../utils/pagination.js');
+const { neo4j } = require('../db/connect.js');
 
 const driverSession = require('../db/connect.js').driverSession;
 
-async function findFriends(userId) {
-    let response = await driverSession.run(
-        `
-        MATCH (person:PERSON) <-[:FRIEND_WITH]-> (anotherPerson:PERSON)
-        WHERE ID(person) = $userId
-        RETURN anotherPerson
-        `, {userId: userId}
-    );
-    return response.records.map(record => record._fields[0].properties);
+async function findFriends(userId, page = DEFAULT_PAGE, pageSize = DEFAULT_PAGE_SIZE) {
+  const friendsRelationships = await driverSession.run(
+    `
+  MATCH (user:PERSON {id: $userId}) <-[friend_with:FRIEND_WITH]-> (friend:PERSON)
+  WITH friend.id AS friends_ids ORDER BY friends_ids
+  SKIP $page
+  LIMIT $pageSize
+  RETURN COLLECT(friends_ids) AS friends_ids`,
+    {
+      userId: userId,
+      page: neo4j.int(calculateOffset(page, pageSize)),
+      pageSize: neo4j.int(calculatePageLimit(pageSize)),
+    }
+  );
+
+  let friendsIds = friendsRelationships.records[0].get('friends_ids');
+  if (!friendsIds?.length) return [];
+
+  let friends = await User.findAll({
+    attributes: [
+      'id',
+      'firstName',
+      'lastName',
+      'email',
+      'dateOfBirth',
+      'createdAt',
+    ],
+    where: {
+      id: { [Op.in]: friendsIds },
+    },
+  });
+  return friends.map((friend) => friend.get());
 }
 
 
@@ -75,6 +99,7 @@ async function findSliceOfFriends(userId, page = DEFAULT_PAGE, pageSize = DEFAUL
 }
 
 // Unfriend
+// TODO: Test it
 async function deleteFriendship(userId, friendId) {
     await driverSession.run(`
     MATCH (person:PERSON {id: $userId}) <-[friendship:FRIEND_WITH]-> (anotherPerson:PERSON {id: $friendId})

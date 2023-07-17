@@ -1,6 +1,17 @@
 const { sequelize } = require('../db/connect');
 const { DataTypes } = require('sequelize');
 
+const AttachmentStatusEnum = Object.freeze({
+  uploading: 'uploading',
+  completed: 'completed',
+  failed: 'failed',
+});
+
+const AttachmentTypeEnum = Object.freeze({
+  image: 'image',
+  video: 'video',
+});
+
 const Attachment = sequelize.define(
   'Attachment',
   {
@@ -11,7 +22,7 @@ const Attachment = sequelize.define(
       allowNull: false,
     },
     name: {
-      type: DataTypes.UUID,
+      type: DataTypes.STRING(50),
     },
     url: {
       type: DataTypes.TEXT,
@@ -20,7 +31,17 @@ const Attachment = sequelize.define(
       type: DataTypes.BIGINT,
     },
     type: {
-      type: DataTypes.CHAR(75),
+      type: DataTypes.ENUM(AttachmentTypeEnum.image, AttachmentTypeEnum.video),
+    },
+    extension: {
+      type: DataTypes.CHAR(25),
+    },
+    status: {
+      type: DataTypes.ENUM(
+        AttachmentStatusEnum.uploading,
+        AttachmentStatusEnum.completed,
+        AttachmentStatusEnum.failed
+      ),
     },
   },
   {
@@ -33,4 +54,5 @@ const Attachment = sequelize.define(
 
 module.exports = {
   Attachment,
+  AttachmentStatusEnum,
 };

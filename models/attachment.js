@@ -55,4 +55,5 @@ const Attachment = sequelize.define(
 module.exports = {
   Attachment,
   AttachmentStatusEnum,
+  AttachmentTypeEnum
 };

@@ -1,84 +1,12 @@
-const { driverSession } = require('../db/connect');
-const { v4: uuidv4 } = require('uuid');
-const fs = require('fs');
-const path = require('path');
-const { finished } = require('stream/promises');
-const { isValidMedia } = require('../utils/validators/media');
-const { parseFileExtension } = require('../utils/parsers/file');
 const { Post, PostStatusEnum } = require('../models/post');
 const { PostAttachment } = require('../models/post-attachment');
 const { isFriend } = require('./friendRepo');
 const Fanout = require('./fanout.js');
-const { Op } = require('sequelize');
+const { Op, Model } = require('sequelize');
 const { isBlank } = require('../utils/string-utils');
 const { Attachment } = require('../models/attachment');
-
-// TODO: Implement Privacy and Post Slicing
-// TODO: (post:POST) -[NOT_VISIBLE_TO]-> (person:PERSON)
-// TODO: (post:POST) -[ONLY_VISIBLE_TO]-> (person:PERSON)
-// TODO: IF (post:POST) -[ONLY_VISIBLE_TO]-> (friends:FRIENDS) THEN (friend:PERSON)<-[friends_with:FRIENDS_WITH]-> (poster:Person) -[posts:POSTS]-> (post:POST)
-// TODO: IF (post:POST) -[ONLY_VISIBLE_TO]-> (person:PERSON) THEN (person)
-// if condition for other privacy rules like "friends"
-
-async function fetchNewsfeed(userId, size, lastSeenPostId) {
-  // TODO: handle case: User follows another user who posts public posts
-  // TODO: Use machine learning in fetching the newsfeed
-  try {
-    let res = await driverSession.run(
-      `
-        MATCH (person:PERSON) WHERE ID(person) = $userId
-        MATCH (someone:PERSON) -[POSTS]-> (post:POST) -[ONLY_VISIBLE_TO]-> (person)
-        WHERE ID(post) > $lastSeenPostId
-        OR
-        MATCH (person) <-[FRIENDS_WITH]-> (someone:PERSON) -[POSTS]-> (post:POST) -[ONLY_VISIBLE_TO]-> (friends:FRIENDS)
-        WHERE ID(post) > $lastSeenPostId
-        RETURN (post)
-        LIMIT $size
-    `,
-      {
-        userId: userId,
-        lastSeenPostId: lastSeenPostId ? lastSeenPostId : 0,
-        size: size ? size : 15,
-      }
-    );
-
-    return res.records.map((record) => record._fields[0].properties);
-  } catch (e) {
-    console.error('ERROR: ' + e);
-    console.error('ERROR_CODE: ' + e.code);
-  }
-}
-
-async function findPostById(postId) {
-  try {
-    const res = await driverSession.run(
-      `
-        MATCH (post:POST) WHERE ID(post) = $postId
-        RETURN (post)`,
-      { postId: postId }
-    );
-    return res.records.map((record) => record._fields[0].properties);
-  } catch (e) {
-    console.error('ERROR: ' + e);
-    console.error('ERROR_CODE: ' + e.code);
-  }
-}
-
-async function deletePostById(userId, postId) {
-  try {
-    await driverSession.run(
-      `
-            MATCH (person: PERSON) WHERE ID(person) = $userId
-            MATCH (person) -[POSTS]-> (post:POST) WHERE ID(post) = $postId
-            DETACH DELETE (post)
-            `,
-      { userId: userId, postId: postId }
-    );
-  } catch (e) {
-    console.error('ERROR: ' + e);
-    console.error('ERROR_CODE: ' + e.code);
-  }
-}
+const { postCacheRepository } = require('../cache/models/post');
+const { Comment } = require('../models/comment');
 
 async function deletePost(userId, postId) {
   return await Post.destroy({
@@ -105,19 +33,16 @@ async function savePost(userId, postId, msg) {
   let post = null;
   switch (msg.postStatus) {
     case PostStatusEnum.archived:
-      post = archivePost(userId, postId, msg);
+      post = await archivePost(userId, postId, msg);
       break;
     case PostStatusEnum.draft:
-      post = savePostAsDraft(userId, postId, msg);
+      post = await savePostAsDraft(userId, postId, msg);
       break;
     case PostStatusEnum.published:
-      post = publishPost(userId, postId, msg);
+      post = await publishPost(userId, postId, msg);
       break;
   }
 
-  // const post = await Post.create({ userId: userId, content: msg.content });
-  // TODO: Add post to cache
-  await Fanout.pushToNewsFeed(userId, post.get()); // TODO: Implement it
   return post.get();
 }
 
@@ -150,17 +75,21 @@ async function savePostAsDraft(userId, postId, msg) {
 
 async function publishPost(userId, postId, msg) {
   if (!postId) {
-    if (!isBlank(msg.content))
-      return await Post.create({
+    if (!isBlank(msg.content)) {
+      let post = await Post.create({
         content: msg.content,
         userId: userId,
         postStatus: PostStatusEnum.published,
       });
+      Fanout.pushToNewsFeed(userId, post.getDataValue('id'));
+      savePostModelToCache(post);
+      return post;
+    }
 
     return null; // TODO: Throw an exception
   } else {
     if (!isBlank(msg.content)) {
-      const [affectRowCount] =  await Post.update(
+      const [affectRowCount] = await Post.update(
         { content: msg.content, postStatus: PostStatusEnum.published },
         { where: { id: postId, userId: userId } }
       );
@@ -179,124 +108,102 @@ async function publishPost(userId, postId, msg) {
     post.set({ content: msg.content, postStatus: PostStatusEnum.published });
     const updatedPost = await post.save();
     if (oldPostStatus == PostStatusEnum.draft) {
-      // TODO: Push to newsfeed 
-      await Fanout.pushToNewsFeed(userId, updatedPost);
+      Fanout.pushToNewsFeed(userId, updatedPost.getDataValue('id'));
+      savePostModelToCache(updatedPost);
     }
     return updatedPost;
   }
 }
 
-async function addPost(userId, msg) {
-  let urls = await Promise.all(
-    msg.media.map(async (file) => {
-      const { createReadStream, filename, mimetype, encoding } = await file;
-
-      const fileExtension = parseFileExtension(filename);
-      if (!isValidMedia(fileExtension)) {
-        // TODO: Throw error
-        throw new Error('Invalid media type');
-      }
-
-      const newFilename = uuidv4() + '_' + Date.now() + fileExtension; // generates a unique filename
-
-      const stream = createReadStream();
-      const out = fs.createWriteStream(
-        path.join(__dirname, `/../FileUpload/Posts/${newFilename}`)
-      );
-      stream.pipe(out);
-      await finished(out);
-      return `http://localhost:3000/FileUpload/Posts/${newFilename}`;
-    })
-  );
-
-  if (!urls && msg.content.trim().length === 0) {
-    // TODO: Throw Error
-    throw new Error('Empty Post');
-  }
-
+async function savePostModelToCache(post) {
   try {
-    await driverSession.run(
-      `
-    CREATE (
-    MATCH (person:PERSON) WHERE ID(person) = $userId 
-    CREATE (post:POST {post.content: $content, post.media: $media, post.creationDate: timestamp()})<-[POSTS]- (person)`,
-      { userId: userId, content: msg.content, media: urls }
+    return await postCacheRepository.save(
+      post.getDataValue('id').toString(),
+      await transformToCacheablePost(post.get(), post.get().PostAttachments)
     );
-    return true;
-  } catch (e) {
-    console.error('ERROR: ' + e);
-    console.error('ERROR_CODE: ' + e.code);
-    return false;
+  } catch (err) {
+    console.err('An error has occurred while saving post model to cache:', err);
   }
 }
 
-async function getSliceOfUserPosts(userId, size, offset) {
-  try {
-    let res = await driverSession.run(
-      `
-                MATCH (person:PERSON) WHERE ID(person) = $userId
-                MATCH (person) -[POSTS]-> (post:POST)
-                RETURN post
-                SKIP $offset
-                LIMIT $size
-            `,
-      { userId: userId, offset: offset, size: size }
-    );
+async function transformToCacheablePost(post, postAttachments) {
+  let cacheablePost = post;
 
-    return res.records.map((record) => record._fields[0].properties);
-  } catch (e) {
-    console.error('ERROR: ' + e);
-    console.error('ERROR_CODE: ' + e.code);
-  }
-}
+  if (!postAttachments?.length) return cacheablePost;
 
-async function getSliceOfPostComments(postId, size, offset) {
-  try {
-    let res = driverSession.run(
-      `
-            MATCH (post:POST) WHERE ID(post) = $postId
-            MATCH (comment:COMMENT) -[COMMENTS_ON]-> (post)
-            RETURN comment
-            SKIP $offset
-            LIMIT $size
-        `,
-      { postId: postId, offset: offset, size: size }
-    );
-    return res.records.map((record) => record._fields[0].properties);
-  } catch (e) {
-    console.error('ERROR: ' + e);
-    console.error('ERROR_CODE: ' + e.code);
+  let attachmentURLs = [];
+  for (const postAttachment of postAttachments) {
+    const url = postAttachment.Attachment.getDataValue('url');
+    attachmentURLs.push(url);
   }
+
+  delete cacheablePost.PostAttachments;
+  cacheablePost.postAttachments = attachmentURLs;
+  return cacheablePost;
 }
 
 async function findPostByCommentId(commentId) {
   try {
-    let res = await driverSession.run(
-      `
-            MATCH (comment:COMMENT) WHERE ID(comment) = $commentId
-            MATCH (comment) -[COMMENTS_ON]->(post:POST)
-            RETURN post`
-    );
-    return res.records.map((record) => record._fields[0].properties);
+    let comment = await Comment.findByPk(commentId, {
+      include: {
+        model: Post,
+        attributes: [
+          'id',
+          'content',
+          'createdAt',
+          'lastModifiedAt',
+        ],
+        include: {
+          model: PostAttachment,
+          attributes: [],
+          include: {
+            model: Attachment,
+            attributes: ['id', 'url']
+          }
+          
+        }
+      },
+      attributes: [],
+    });
+    return comment ? comment.get().Post : null;
   } catch (e) {
-    console.error('ERROR: ' + e);
-    console.error('ERROR_CODE: ' + e.code);
-    //TODO: Handle Error
+    console.error(e);
+  }
+}
+
+async function findPostsByUserId(userId) {
+  let posts = await Post.findAll({
+    where: { userId: userId },
+    attributes: ['id', 'content', 'postStatus', 'createdAt', 'lastModifiedAt'],
+  });
+
+  return posts.map((post) => post.get());
+}
+
+async function findPostByPostAttachmentId(postAttachmentId) {
+  try {
+    let postAttachment = await PostAttachment.findByPk(postAttachmentId, {
+      include: {
+        model: Post,
+        attributes: ['id', 'content', 'createdAt', 'lastModifiedAt'],
+      },
+      attributes: [],
+    });
+    return postAttachment ? postAttachment.get().Post : null;
+  } catch (e) {
+    console.error(e);
   }
 }
 
 module.exports = {
-  addPost,
-  findPostById,
-  deletePostById,
-  getSliceOfPostComments,
   findPostByCommentId,
-  getSliceOfUserPosts,
-  fetchNewsfeed,
-
   savePost,
   archivePost,
   savePostAsDraft,
   publishPost,
-  findPost
+  findPost,
+  deletePost,
+  findPostsByUserId,
+  savePostModelToCache,
+  findPostByPostAttachmentId
 };

@@ -40,6 +40,7 @@ const FriendRequest = sequelize.define(
   },
   {
     tableName: 'friend_request',
+    underscored: true,
     createdAt: true,
     updatedAt: 'lastModifiedAt',
   }
@@ -48,13 +49,13 @@ const FriendRequest = sequelize.define(
 User.belongsToMany(User, {
   as: 'sender',
   foreignKey: 'senderId',
-  through: FriendRequest,
+  through: { model: FriendRequest, unique: false },
 });
 
 User.belongsToMany(User, {
   as: 'receiver',
   foreignKey: 'receiverId',
-  through: FriendRequest,
+  through: { model: FriendRequest, unique: false },
 });
 
 module.exports = {

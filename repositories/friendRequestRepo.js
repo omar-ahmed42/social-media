@@ -1,19 +1,16 @@
 const { sequelize } = require('../db/connect.js');
-const { FriendRequest, FriendRequestStatusesEnum } = require('../models/friend-request.js');
-const { calculateOffset, calculatePageLimit, DEFAULT_PAGE, DEFAULT_PAGE_SIZE } = require('../utils/pagination.js');
+const {
+  FriendRequest,
+  FriendRequestStatusesEnum,
+} = require('../models/friend-request.js');
+const {
+  calculateOffset,
+  calculatePageLimit,
+  DEFAULT_PAGE,
+  DEFAULT_PAGE_SIZE,
+} = require('../utils/pagination.js');
 
 const driverSession = require('../db/connect.js').driverSession;
-
-
-async function findAllReceivedFriendRequests(receiverId) {
-    let friendRequests = await driverSession.run(`
-    MATCH (receiver:PERSON) WHERE ID(receiver) = $receiverId
-    MATCH (sender:PERSON) -[:FRIEND_REQUEST]-> (receiver)
-    RETURN sender
-    `, {receiverId: receiverId});
-
-    return friendRequests;
-}
 
 async function findFriendRequests(
   userId,
@@ -21,44 +18,37 @@ async function findFriendRequests(
   page = DEFAULT_PAGE,
   pageSize = DEFAULT_PAGE_SIZE
 ) {
+  let friendRequests = [];
   switch (friendRequestStatus) {
     case FriendRequestStatusesEnum.pending:
     case FriendRequestStatusesEnum.cancelled:
-      FriendRequest.findAndCountAll({
-        include: { model: User, as: 'sender' },
+      friendRequests = await FriendRequest.findAndCountAll({
         where: { senderId: userId, requestStatus: friendRequestStatus },
-        order: ['created_at', 'DESC'],
+        order: [['created_at', 'DESC']],
         offset: calculateOffset(page, pageSize),
         limit: calculatePageLimit(pageSize),
       });
       break;
     case FriendRequestStatusesEnum.accepted:
     case FriendRequestStatusesEnum.rejected:
-      FriendRequest.findAndCountAll({
-        include: { model: User, as: 'receiver' },
+      friendRequests = await FriendRequest.findAndCountAll({
         where: { receiverId: userId, requestStatus: friendRequestStatus },
-        order: ['created_at', 'DESC'],
+        order: [['created_at', 'DESC']],
         offset: calculateOffset(page, pageSize),
         limit: calculatePageLimit(pageSize),
       });
       break;
   }
-}
-
-async function findAllSentFriendRequests(senderId) {
-    let friendRequests = await driverSession.run(
-        `
-        MATCH (sender:PERSON) WHERE ID(sender) = $senderId
-        MATCH (sender) -[:FRIEND_REQUEST]-> (receiver:PERSON)
-        RETURN receiver`, {senderId: senderId}
-    );
-
-    return friendRequests;
+  return friendRequests?.rows.length > 0
+    ? friendRequests.rows.map((friendRequest) => friendRequest.get())
+    : [];
 }
 
 async function sendFriendRequest(senderId, receiverId) {
+  if (senderId == receiverId) {
+    return null;
+  } // TODO: Throw an exception
   let friendRequest = null;
-  let created = false;
   await driverSession.executeRead(async (t1) => {
     const result = await t1.run(
       `
@@ -70,7 +60,7 @@ async function sendFriendRequest(senderId, receiverId) {
         COALESCE(receiver_blocks IS NOT NULL, false) AS receiver_blocks_sender,
         COALESCE(friend_with IS NOT NULL, false) AS friend_with
         `,
-      { senderId: senderId, receiverId: receiverId }
+      { senderId: BigInt(senderId), receiverId: BigInt(receiverId) }
     );
 
     const [isBlockedBySender, isBlockedByReceiver, areFriends] = [
@@ -79,24 +69,30 @@ async function sendFriendRequest(senderId, receiverId) {
       result.records[0].get('friend_with'),
     ];
 
-    if (isBlockedBySender || isBlockedByReceiver || areFriends)
-      return [friendRequest, created];
-
-    [friendRequest, created] = await FriendRequest.findOrCreate({
-      where: {
-        senderId: senderId,
-        receiverId: receiverId,
-        requestStatus: FriendRequestStatusesEnum.pending,
-      },
-    });
+    if (isBlockedBySender || isBlockedByReceiver || areFriends) {
+      return friendRequest;
+    }
+    try {
+      [friendRequest] = await FriendRequest.findOrCreate({
+        where: {
+          senderId: senderId,
+          receiverId: receiverId,
+          requestStatus: FriendRequestStatusesEnum.pending,
+        },
+        benchmark: true,
+      });
+    } catch (err) {
+      console.error('ERROR: ', err);
+    }
   });
-  return [friendRequest, created];
+
+  return friendRequest;
 }
 
 async function cancelFriendRequest(id, senderId) {
   let updatedRowsCount = 0;
   await sequelize.transaction(async (t) => {
-    [updatedRowsCount,] = await FriendRequest.update(
+    [updatedRowsCount] = await FriendRequest.update(
       { requestStatus: FriendRequestStatusesEnum.cancelled },
       {
         where: {
@@ -112,7 +108,7 @@ async function cancelFriendRequest(id, senderId) {
 }
 
 async function acceptFriendRequest(id, receiverId) {
-  await sequelize.transaction(async (t1) => {
+  return await sequelize.transaction(async (t1) => {
     let affectedRowCount = 0;
 
     let pendingFriendRequest = await FriendRequest.findOne({
@@ -149,6 +145,7 @@ async function acceptFriendRequest(id, receiverId) {
         );
       });
     }
+    return affectedRowCount;
   });
 }
 
@@ -170,38 +167,10 @@ async function rejectFriendRequest(id, receiverId) {
   return affectedRowCount;
 }
 
-async function deleteFriendRequest(senderId, receiverId) {
-
-    // Sender cancels the sent friend request
-    await driverSession.run(
-        `
-        MATCH (sender:PERSON) WHERE ID(sender) = $senderId
-        MATCH (receiver:PERSON) WHERE ID(receiver) = $receiverId
-        MATCH (sender) -[friend_request:FRIEND_REQUEST]-> (receiver)
-        DELETE friend_request
-        `, {senderId: senderId, receiverId: receiverId}
-    );
-}
-
-async function declineFriendRequest(senderId, receiverId) {
-    // Receiver cancels the received friend request
-    await driverSession.run(
-        `
-        MATCH (sender:PERSON) WHERE ID(sender) = $senderId
-        MATCH (receiver:PERSON) WHERE ID(receiver) = $receiverId
-        MATCH (sender) -[friend_request:FRIEND_REQUEST]-> (receiver)
-        DELETE friend_request
-        `, {senderId: senderId, receiverId: receiverId}
-    );
-}
-
 module.exports = {
-    findAllReceivedFriendRequests,
-    findAllSentFriendRequests,
-    sendFriendRequest,
-    cancelFriendRequest,
-    acceptFriendRequest,
-    rejectFriendRequest,
-    declineFriendRequest,
-    deleteFriendRequest
-}
+  sendFriendRequest,
+  cancelFriendRequest,
+  acceptFriendRequest,
+  rejectFriendRequest,
+  findFriendRequests,
+};

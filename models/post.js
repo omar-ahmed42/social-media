@@ -2,12 +2,13 @@ const { sequelize } = require('../db/connect');
 const { DataTypes } = require('sequelize');
 const { User } = require('./user');
 const { PostAttachment } = require('./post-attachment');
+const { Comment } = require('./comment');
 
-const PostStatusEnum = {
+const PostStatusEnum = Object.freeze({
   draft: 'draft',
   published: 'published',
   archived: 'archived',
-};
+});
 
 const Post = sequelize.define(
   'Post',
@@ -43,13 +44,16 @@ const Post = sequelize.define(
   }
 );
 
-Post.hasMany(PostAttachment, {foreignKey: 'postId'});
-PostAttachment.belongsTo(Post, {foreignKey: 'postId'});
+Post.hasMany(PostAttachment, { foreignKey: 'postId' });
+PostAttachment.belongsTo(Post, { foreignKey: 'postId' });
 
 User.hasMany(Post, { foreignKey: 'userId' });
-Post.belongsTo(User, {foreignKey: 'userId'});
+Post.belongsTo(User, { foreignKey: 'userId' });
+
+Post.hasMany(Comment, { foreignKey: 'postId' });
+Comment.belongsTo(Post, { foreignKey: 'postId' });
 
 module.exports = {
   Post,
-  PostStatusEnum
+  PostStatusEnum,
 };

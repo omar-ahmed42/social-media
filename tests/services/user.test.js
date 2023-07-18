@@ -1,7 +1,7 @@
 const { sequelize } = require('../../db/connect');
 const { Role } = require('../../models/role');
 const { User } = require('../../models/user');
-const { addPerson, hashPassword } = require('../../repositories/personRepo');
+const { addPerson, hashPassword } = require('../../services/person');
 
 const upsertedUser = {
   id: 1,

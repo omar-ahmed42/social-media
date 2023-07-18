@@ -1,7 +1,7 @@
-const { findAllFriends, isFriend } = require('../../repositories/friendRepo');
+const { findAllFriends, isFriend } = require('../../services/friend');
 const { sequelize, driverSession } = require('../../db/connect');
 
-const { hashPassword } = require('../../repositories/personRepo');
+const { hashPassword } = require('../../services/person');
 const { User } = require('../../models/user');
 const { Role } = require('../../models/role');
 

@@ -14,6 +14,7 @@ async function reactToPost(userId, msg) {
     }
 }
 
+
 async function removeReactionFromPost(userId, msg) {
     try {
         await driverSession.run(`

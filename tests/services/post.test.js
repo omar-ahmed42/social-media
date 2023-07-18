@@ -1,17 +1,19 @@
 const { sequelize, driverSession } = require('../../db/connect');
 
-const { hashPassword } = require('../../repositories/personRepo');
+const { hashPassword } = require('../../services/person');
 const { User } = require('../../models/user');
 const { Role } = require('../../models/role');
 const {
   archivePost,
   savePostAsDraft,
   publishPost,
-} = require('../../repositories/postRepo');
+} = require('../../services/post');
 const { Post, PostStatusEnum } = require('../../models/post');
-const { pushToNewsFeed } = require('../../repositories/fanout');
+const { pushToNewsFeed } = require('../../services/fanout');
 const { PostAttachment } = require('../../models/post-attachment');
 const { Attachment } = require('../../models/attachment');
+const { connectToRedis, redisClient } = require('../../cache/client');
+
 
 async function createUserForTesting(user) {
   let [createdOrRetrievedUser] = await User.findOrCreate({
@@ -107,8 +109,9 @@ function transformAndPush(user, array) {
   array.push(element);
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   sequelize.options.logging = false;
+  await connectToRedis(redisClient);
 });
 
 beforeEach(async () => {
@@ -170,12 +173,13 @@ afterEach(async () => {
   await driverSession.run('MATCH (n) DELETE n');
 
   expectedFriends = [];
-  // console.log('--------------------AFTER-EACH--------------------------');
+  console.log('--------------------AFTER-EACH--------------------------');
 }, 20000);
 
 afterAll(async () => {
   await sequelize.close();
   await driverSession.close();
+  await redisClient.disconnect();
   console.log('--------------------AFTER-ALL--------------------------');
 });
 
@@ -323,10 +327,10 @@ describe('Publishing a post', () => {
   });
 
   test('Post ID provided, all fields are valid, post status = draft. Push to newsfeed should be called once', async () => {
-    const Fanout = require('../../repositories/fanout');
+    const Fanout = require('../../services/fanout');
     Fanout.pushToNewsFeed = jest.fn();
     const attachment = await Attachment.create({
-      url: 'url',
+      url: 'localhost/url',
       size: 123,
       name: 'any_name',
       type: 'any_type',
@@ -337,8 +341,9 @@ describe('Publishing a post', () => {
         attachmentId: attachment.getDataValue('id')
       }
     );
-    await publishPost(user.id, draftPost.id, { content: '' });
+    const post = await publishPost(user.id, draftPost.id, { content: '' });
     expect(Fanout.pushToNewsFeed).toHaveBeenCalled();
+    expect(true).toBeTruthy();
   });
   
   test('Post ID provided, all fields are valid, post status != draft. Should return updated post with published status', async () => {

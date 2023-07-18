@@ -5,8 +5,8 @@ const {
   cancelFriendRequest,
   acceptFriendRequest,
   rejectFriendRequest,
-} = require('../../repositories/friendRequestRepo');
-const { hashPassword } = require('../../repositories/personRepo');
+} = require('../../services/friend-request');
+const { hashPassword } = require('../../services/person');
 const { User } = require('../../models/user');
 const { Role } = require('../../models/role');
 const { FriendRequest } = require('../../models/friend-request');

@@ -1,6 +1,6 @@
 const { Post, PostStatusEnum } = require('../models/post');
 const { PostAttachment } = require('../models/post-attachment');
-const { isFriend } = require('./friendRepo');
+const { isFriend } = require('./friend');
 const Fanout = require('./fanout.js');
 const { Op, Model } = require('sequelize');
 const { isBlank } = require('../utils/string-utils');

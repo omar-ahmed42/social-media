@@ -5,53 +5,53 @@ const {
   deletePost,
   findPost,
   findPostsByUserId,
-} = require('../repositories/postRepo');
+} = require('../services/post');
 const {
   findUserByPostId,
   findUserByCommentId,
   addPerson,
   deletePersonById,
   findPersonById,
-} = require('../repositories/personRepo');
+} = require('../services/person');
 const {
   deleteComment,
   findCommentById,
   saveComment,
   findCommentsByPostId,
   findCommentByCommentAttachmentId,
-} = require('../repositories/commentRepo');
+} = require('../services/comment');
 const {
   blockUser,
   unblockUser,
-} = require('../repositories/blockRepo');
+} = require('../services/block');
 const {
   findFriends,
   deleteFriendship,
-} = require('../repositories/friendRepo');
+} = require('../services/friend');
 const {
   findFriendRequests,
   sendFriendRequest,
   cancelFriendRequest,
   rejectFriendRequest,
   acceptFriendRequest,
-} = require('../repositories/friendRequestRepo');
+} = require('../services/friend-request');
 const {
   reactToPost,
   reactToComment,
   removeReactionFromComment,
   removeReactionFromPost,
   addReactionType,
-} = require('../repositories/reactionRepo');
+} = require('../services/reaction');
 const { GraphQLScalarType, Kind } = require('graphql');
-const { fetchNewsfeed } = require('../repositories/fanout');
-const { savePostReaction } = require('../repositories/post-reaction');
-const { saveCommentReaction } = require('../repositories/comment-reaction');
+const { fetchNewsfeed } = require('../services/fanout');
+const { savePostReaction } = require('../services/post-reaction');
+const { saveCommentReaction } = require('../services/comment-reaction');
 const {
   savePostAttachment,
   findPostAttachmentsByPostId,
   transformPostAttachmentsModelToGraphQLPostAttachment,
-} = require('../repositories/post-attachment');
-const { transformCommentAttachmentsModelToGraphQLCommentAttachment, findCommentAttachmentsByCommentId, saveCommentAttachment } = require('../repositories/comment-attachment');
+} = require('../services/post-attachment');
+const { transformCommentAttachmentsModelToGraphQLCommentAttachment, findCommentAttachmentsByCommentId, saveCommentAttachment } = require('../services/comment-attachment');
 
 const dateScalar = new GraphQLScalarType({
   name: 'Date',

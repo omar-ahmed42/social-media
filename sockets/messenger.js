@@ -1,4 +1,4 @@
-const {addMessage} = require("../repositories/messages");
+const {addMessage} = require("../services/messages");
 
 function storeUserSocket(io, userId, socket){
     let listOfUserSockets;

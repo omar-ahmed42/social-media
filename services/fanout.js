@@ -1,8 +1,8 @@
 const { Op } = require('sequelize');
 const { redisClient } = require('../cache/client');
 const { Post } = require('../models/post');
-const { findAllFriends } = require('./friendRepo');
-const { savePostModelToCache } = require('./postRepo');
+const { findAllFriends } = require('./friend');
+const { savePostModelToCache } = require('./post');
 
 const MAX_NEWSFEED_SIZE = 150;
 

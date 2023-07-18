@@ -1,84 +1,125 @@
-const {gql} = require('graphql-tag');
+const { gql } = require('graphql-tag');
 
 const typeDefs = gql`
-    scalar Upload
-    scalar Date
+  scalar Upload
+  scalar Date
 
-    type File {
-        filename: String!
-        mimetype: String!
-        encoding: String!
-    }
-    
-    type Person {
-        id: ID!,
-        firstName: String,
-        middleName: String,
-        lastName: String,
-        email: String,
-        username: String,
-        password: String,
-        dateOfBirth: Date,
-        role: ID,
-        posts: [Post]
-    }
-    
-    type Post {
-        id: ID!,
-        content: String,
-        media: [String]
-        comments: [Comment],
-        creationdate: String,
-        poster: Person
-    }
-    
-    type Comment {
-        id: ID!,
-        content: String,
-        media: [File],
-        post: Post,
-        creationDate: String,
-        commenter: Person
-    }
+  type File {
+    filename: String!
+    mimetype: String!
+    encoding: String!
+  }
 
-    # Queries
-    type Query {
-        getBlockedUsers(userId: ID!): [Person]!
-        getFriends(userId: ID!): [Person]!
-        getSliceOfFriends(userId: ID!, offset: Int!, size: Int!): [Person]!
-        findAllSentFriendRequests(userId: ID!): [Person]!
-        findAllReceivedFriendRequests(userId: ID!): [Person]!
-        getPersonById(userId: ID!): Person!
-        getPostById(id: ID!): Post
-        getCommentById(commentId: ID!): Comment
-        getAllBlockedUsers: [Person]
-        getNewsFeed(lastSeenPostId: Int, size: Int):[Post]
-        
-    }
-    
-    # Mutations
-    type Mutation {
-        addPerson(firstName: String!, lastName: String!, email: String!, password: String!, dateOfBirth: String!, roles: [String]!): Boolean!
-        deletePerson(id: ID!): Boolean
-        addPost(content: String, media: [Upload]): Boolean
-        deletePost(postId: ID!): Boolean
-        addComment(postId: ID!, content: String, media: [Upload]): Boolean
-        deleteComment(id: ID!): Boolean
-        blockUser(userToBeBlockedId: ID!): Boolean
-        unblockUser(userToBeBlockedId: ID!): Boolean
-        deleteFriendship(friendId: ID!): Boolean
-        declineFriendRequest(senderId: ID!): Boolean
-        cancelFriendRequest(receiverId: ID!): Boolean
-        acceptFriendRequest(senderId: ID!): Boolean
-        sendFriendRequest(senderId: ID!, receiverId: ID!): Boolean
-        reactToPost(postId: ID!, reactionTypeId: ID!): Boolean
-        removeReactionFromPost(postId: ID!, reactionId: ID!): Boolean
-        reactToComment(commentId: ID!, reactionTypeId: ID!): Boolean
-        removeReactionFromComment(reactionId: ID!): Boolean
-        addReactionType(reactionTypeName: String!): Boolean!
-    }
+  type Person {
+    id: ID
+    firstName: String
+    lastName: String
+    email: String
+    username: String
+    dateOfBirth: Date
+    createdAt: Date
+    roles: [Role]
+    posts: [Post]
+  }
+
+  type Role {
+    id: ID
+    name: String
+  }
+
+  type Post {
+    id: ID
+    content: String
+    postAttachments: [PostAttachment]
+    comments: [Comment]
+    createdAt: String
+    user: Person
+  }
+
+  type Comment {
+    id: ID!
+    content: String
+    commentAttachments: [CommentAttachment]
+    post: Post
+    createdAt: String
+    user: Person
+  }
+
+  type FriendRequest {
+    id: ID
+    sender: Person
+    receiver: Person
+  }
+
+  type PostAttachment {
+    id: ID
+    url: String
+    post: Post
+  }
+
+  type CommentAttachment {
+    id: ID
+    url: String
+    comment: Comment
+  }
+
+  # Queries
+  type Query {
+    findPost(id: ID!): Post
+    findComment(id: ID!): Comment
+    findFriends(page: Int, pageSize: Int): [Person]
+    fetchNewsfeed(id: ID): [Post]
+    findFriendRequests(
+      friendRequestStatus: String
+      page: Int
+      pageSize: Int
+    ): [FriendRequest]
+  }
+
+  # Mutations
+  type Mutation {
+    addPerson(
+      firstName: String!
+      lastName: String!
+      email: String!
+      password: String!
+      dateOfBirth: String!
+      roles: [String]!
+    ): Person
+    deletePerson(id: ID!): Boolean
+    blockUser(userToBeBlockedId: ID!): Boolean
+    unblockUser(userToBeBlockedId: ID!): Boolean
+    reactToPost(postId: ID!, reactionTypeId: ID!): Boolean
+    removeReactionFromPost(postId: ID!, reactionId: ID!): Boolean
+    reactToComment(commentId: ID!, reactionTypeId: ID!): Boolean
+    removeReactionFromComment(reactionId: ID!): Boolean
+    addReactionType(reactionTypeName: String!): Boolean!
+
+    savePost(id: ID, content: String, postStatus: String): Post
+    deletePost(id: ID!): Int
+
+    saveComment(
+      id: ID
+      postId: ID
+      content: String
+      commentStatus: String
+    ): Comment
+    deleteComment(id: ID!): Int
+
+    sendFriendRequest(receiverId: ID!): FriendRequest
+    cancelFriendRequest(id: ID!): Int
+    acceptFriendRequest(id: ID!): Int
+    rejectFriendRequest(id: ID!): Int
+    unfriend(friendId: ID): Boolean
+
+    savePostReaction(reactionId: ID!, postId: ID!): Int
+    saveCommentReaction(reactionId: ID!, commentId: ID!): Int
+
+    savePostAttachment(attachment: Upload!, postId: ID): PostAttachment
+    saveCommentAttachment(attachment: Upload!, commentId: ID): CommentAttachment
+  }
 `;
 
 module.exports = {
-    typeDefs
-}
+  typeDefs,
+};

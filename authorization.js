@@ -1,61 +1,44 @@
-const {and, or, rule, shield} = require("graphql-shield");
-
-function checkPermission(user, permissions){
-    if (!user && !containsRole(user.roles, permissions)){
-        // TODO: Handle unauthorized user case
-        console.error('Unauthorized');
-        return;
-    }
-}
+const { rule, shield } = require('graphql-shield');
 
 const isAuthenticated = rule()((parent, args, { user }) => {
-    return user !== null;
-})
-
-const containsRole = (userRoles, requiredRoles) => {
-    return requiredRoles.some( role => userRoles.indexOf(role) >= 0);
-}
-
-const isOwnUser = rule()((parent, { userId }, { user }) =>{
-    return user && user == userId;
+  return user !== null;
 });
 
-const isTheSameAuthenticatedUser = and(isAuthenticated, isOwnUser);
+const containsRole = (userRoles, requiredRoles) => {
+  return requiredRoles.some((role) => userRoles.indexOf(role) >= 0);
+};
 
-
-const permissions =  shield({
+const permissions = shield(
+  {
     Query: {
-        getBlockedUsers: isTheSameAuthenticatedUser,
-        getFriends: isTheSameAuthenticatedUser,
-        getSliceOfFriends: isTheSameAuthenticatedUser,
-        findAllSentFriendRequests: isTheSameAuthenticatedUser,
-        findAllReceivedFriendRequests: isTheSameAuthenticatedUser,
-        getPersonById: isAuthenticated,
-        getPostById: isTheSameAuthenticatedUser,
-        getCommentById: isTheSameAuthenticatedUser
-
+      findPost: isAuthenticated,
+      findComment: isAuthenticated,
+      findFriends: isAuthenticated,
+      fetchNewsfeed: isAuthenticated,
+      findFriendRequests: isAuthenticated,
     },
 
     Mutation: {
-        addPost: isAuthenticated,
-        deletePost: isAuthenticated,
-        addComment: isAuthenticated,
-        deleteComment: isAuthenticated,
-        blockUser: isAuthenticated,
-        unblockUser: isAuthenticated,
-        deleteFriendship: isAuthenticated,
-        declineFriendRequest: isTheSameAuthenticatedUser,
-        cancelFriendRequest: isTheSameAuthenticatedUser,
-        acceptFriendRequest: isTheSameAuthenticatedUser,
-        sendFriendRequest: isTheSameAuthenticatedUser,
-        reactToPost: isAuthenticated,
-        removeReactionFromPost: isAuthenticated,
-        reactToComment: isAuthenticated,
-        removeReactionFromComment: isAuthenticated,
-        addReactionType: isTheSameAuthenticatedUser
-    }
-});
+      savePost: isAuthenticated,
+      deletePost: isAuthenticated,
+      saveComment: isAuthenticated,
+      blockUser: isAuthenticated,
+      unblockUser: isAuthenticated,
+      unfriend: isAuthenticated,
+      rejectFriendRequest: isAuthenticated,
+      cancelFriendRequest: isAuthenticated,
+      acceptFriendRequest: isAuthenticated,
+      sendFriendRequest: isAuthenticated,
+      reactToPost: isAuthenticated,
+      removeReactionFromPost: isAuthenticated,
+      reactToComment: isAuthenticated,
+      removeReactionFromComment: isAuthenticated,
+      addReactionType: isAuthenticated,
+    },
+  },
+  { debug: true, allowExternalErrors: true }
+);
 
 module.exports = {
-    permissions
-}
+  permissions,
+};

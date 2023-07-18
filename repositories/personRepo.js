@@ -1,13 +1,14 @@
-const {mysqlConnection, driverSession, sequelize} = require('../db/connect.js');
-const {cassandraClient, mysqlQuery} = require("../db/connect");
+const {driverSession, sequelize, neo4j} = require('../db/connect.js');
 const { User } = require('../models/user.js');
+const { Comment } = require('../models/comment.js');
 const {Role} = require('../models/role.js');
 const bcrypt = require("bcrypt");
 const { Op } = require('sequelize');
+const { Post } = require('../models/post.js');
 
 async function addPerson(msg) {
   const password = await hashPassword(msg.password);
-  await sequelize.transaction(async (t1) => {
+  return await sequelize.transaction(async (t1) => {
     let user = await User.create(
       {
         firstName: msg.firstName,
@@ -30,11 +31,12 @@ async function addPerson(msg) {
     await driverSession.executeWrite(async (t2) => {
       return t2.run(
         `
-          CREATE (person:PERSON {id: $id})
+          MERGE (person:PERSON {id: $id})
           RETURN person`,
-        { id: user.id }
+        { id: neo4j.int(user.getDataValue('id')) }
       );
     });
+    return user.get();
   });
 }
 
@@ -51,7 +53,7 @@ async function deletePersonById(id) {
       t2.run(
         `MATCH (person:PERSON {id: $id})
         DETACH DELETE person`,
-        { id: id }
+        { id: neo4j.int(id) }
       )
     );
   });
@@ -59,41 +61,55 @@ async function deletePersonById(id) {
 }
 
 async function findPersonById(id) {
-  let user;
-  sequelize.transaction(
-    async (t1) => (user = User.findByPk(id, { transaction: t1 }))
+  let user = await sequelize.transaction(
+    async (t1) => await User.findByPk(id, { transaction: t1 })
   );
-  return user;
+  return user.get();
 }
 
-async function findUserByCommentId(commentId){
-    try {
-        const getUserIdQuery = 'SELECT userId FROM Comments WHERE commentId = ?';
-        let res = await cassandraClient.execute(getUserIdQuery, [commentId], {prepare: true, isIdempotent: true});
-        let id = parseInt(res.rows[0].userid);
-
-        const query = 'SELECT id, firstName, lastName FROM Person WHERE id = ?';
-        res = await mysqlQuery(query, [id]);
-        return res[0];
-    } catch (e){
-        console.error('CODE: ' + e.code);
-        console.error(e);
-    }
+async function findUserByCommentId(commentId) {
+  try {
+    let comment = await Comment.findByPk(commentId, {
+      include: {
+        model: User,
+        attributes: [
+          'id',
+          'firstName',
+          'lastName',
+          'email',
+          'dateOfBirth',
+          'createdAt',
+        ],
+      },
+      attributes: [],
+    });
+    return comment ? comment.get().User : null;
+  } catch (e) {
+    console.error(e);
+  }
 }
 
-async function findUserByPostId(postId){
-    try {
-        const getUserIdQuery = 'SELECT userId FROM Posts WHERE postId = ?';
-        let res = await cassandraClient.execute(getUserIdQuery, [postId], {prepare: true, isIdempotent: true});
-        let userId = parseInt(res.rows[0].userid);
-
-        const query = 'SELECT id, firstName, lastName FROM Person WHERE id = ?';
-        res = await mysqlQuery(query, [userId]);
-        return res[0];
-    } catch (e){
-        console.error('CODE: ' + e.code);
-        console.error(e);
-    }
+async function findUserByPostId(postId) {
+  try {
+    let user = await Post.findByPk(postId, {
+      include: {
+        model: User,
+        attributes: [
+          'id',
+          'firstName',
+          'lastName',
+          'email',
+          'dateOfBirth',
+          'createdAt',
+        ],
+      },
+      attributes: [],
+    });
+    return user ? user.get().User : null;
+  } catch (e) {
+    console.error('CODE: ' + e.code);
+    console.error(e);
+  }
 }
 
 module.exports = {

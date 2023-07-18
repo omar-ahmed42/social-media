@@ -1,37 +1,42 @@
-const {mysqlQuery} = require("../db/connect");
 const router = require('express').Router();
-const bcrypt = require("bcrypt");
-const {issueJWT} = require("../utils/jwt");
-const {StatusCodes} = require("http-status-codes");
+const bcrypt = require('bcrypt');
+const { issueJWT } = require('../utils/jwt');
+const { StatusCodes } = require('http-status-codes');
+const { User } = require('../models/user');
 
 router.post('/login', async (req, res, next) => {
-    if (!req.body.email || !req.body.password){
-        res.status(400).json({"success":false, "msg": "Please provide email or password"});
-    }
+  if (!req.body.email || !req.body.password) {
+    return res
+      .status(400)
+      .json({ success: false, msg: 'Please provide email or password' });
+  }
 
-    let findUserQuery = "SELECT id, firstName, lastName, password FROM Person WHERE email = ?";
-    let user = await mysqlQuery(findUserQuery, [req.body.email]);
-    if (!user){
-        res.status(404).json({"success": false, "msg": "Invalid credentials"});
-    }
+  let user = await User.findOne({
+    where: { email: req.body.email },
+    attributes: ['id', 'firstName', 'lastName', 'password'],
+  });
 
-    user = user[0];
-    let isMatch = bcrypt.compare(req.body.password, user.password);
-    if (!isMatch){
-        res.status(404).json({"success": false, "msg": "Invalid credentials"});
-    }
+  if (!user) {
+    return res.status(404).json({ success: false, msg: 'Invalid credentials' });
+  }
 
-    let findUserRolesQuery = "SELECT r.name FROM PERSON_ROLE pr INNER JOIN Role r ON pr.role_fk = r.id WHERE person_fk = ?";
-    let res_roles = await mysqlQuery(findUserRolesQuery, [user.id]);
+  let isMatch = await bcrypt.compare(
+    req.body.password,
+    user.getDataValue('password')
+  );
+  if (!isMatch)
+    return res.status(404).json({ success: false, msg: 'Invalid credentials' });
 
-    let roles = new Array();
-    res_roles.forEach(element => roles.push(element.name));
-    user.roles = roles;
+  let roles = await user.getRoles();
+  user = user.get();
+  user.roles = roles?.length
+    ? roles.map((role) => role.getDataValue('name'))
+    : [];
 
-    const token = issueJWT(user);
-    res.status(StatusCodes.OK).json({"success": true, "token": token});
-})
+  const token = issueJWT(user);
+  return res.status(StatusCodes.OK).json({ success: true, token: token });
+});
 
 module.exports = {
-    router
-}
+  router,
+};

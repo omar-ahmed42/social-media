@@ -27,6 +27,8 @@ const { PostReaction } = require('./models/post-reaction');
 const { CommentReaction } = require('./models/comment-reaction');
 const { Reaction } = require('./models/reaction');
 const { CommentAttachment } = require('./models/comment-attachment');
+const { Conversation } = require('./models/conversation');
+const { ConversationMember } = require('./models/conversation-members');
 const app = express();
 const httpServer = http.createServer(app);
 require('./config/passport')(passport);
@@ -56,6 +58,8 @@ async function syncModels() {
   await Attachment.sync();
   await PostAttachment.sync();
   await CommentAttachment.sync();
+  await Conversation.sync();
+  await ConversationMember.sync();
 }
 
 async function startServer() {

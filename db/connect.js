@@ -29,7 +29,10 @@ var driverSession = driver.session({database: 'neo4j'});
 const cassandraClient = new cassandra.Client({
     contactPoints: [`${process.env.CASSANDRA_HOST}`],
     localDataCenter: 'datacenter1',
-    keyspace: 'social_media'
+    keyspace: 'social_media',
+    queryOptions: {
+        consistency: cassandra.types.consistencies.quorum
+    }
 });
 
 const connectCassandra = async () => await cassandraClient.connect().then(()=>{

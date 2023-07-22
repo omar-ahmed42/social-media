@@ -4,9 +4,9 @@ const { Conversation } = require('./conversation');
 const { User } = require('./user');
 
 const ConversationMember = sequelize.define(
-  'conversation_member',
+  'ConversationMember',
   {
-    id: { type: DataTypes.BIGINT, primaryKey: true, allowNull: false },
+    id: { type: DataTypes.BIGINT, primaryKey: true, allowNull: false, autoIncrement: true },
     conversationId: {
       type: DataTypes.BIGINT,
       allowNull: false,

@@ -4,7 +4,7 @@ const { sequelize } = require('../db/connect');
 const Conversation = sequelize.define(
   'Conversation',
   {
-    id: { type: DataTypes.BIGINT, primaryKey: true, allowNull: false },
+    id: { type: DataTypes.BIGINT, primaryKey: true, allowNull: false, autoIncrement: true },
     name: { type: DataTypes.STRING(75) },
     isGroup: { type: DataTypes.BOOLEAN },
   },

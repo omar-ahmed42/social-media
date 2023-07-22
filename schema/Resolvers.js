@@ -29,13 +29,6 @@ const {
   rejectFriendRequest,
   acceptFriendRequest,
 } = require('../services/friend-request');
-const {
-  reactToPost,
-  reactToComment,
-  removeReactionFromComment,
-  removeReactionFromPost,
-  addReactionType,
-} = require('../services/reaction');
 const { GraphQLScalarType, Kind } = require('graphql');
 const { fetchNewsfeed } = require('../services/fanout');
 const { savePostReaction } = require('../services/post-reaction');
@@ -191,27 +184,6 @@ const resolvers = {
     async unblockUser(parent, args, { user }) {
       await unblockUser(user, args.userToBeBlockedId);
       return true;
-    },
-
-    async reactToPost(parent, args, { user }) {
-      await reactToPost(user, args);
-      return true;
-    },
-
-    async removeReactionFromPost(parent, args, { user }) {
-      return await removeReactionFromPost(user, args);
-    },
-
-    async reactToComment(parent, args, { user }) {
-      return await reactToComment(user, args);
-    },
-
-    async removeReactionFromComment(parent, args, { user }) {
-      return await removeReactionFromComment(args);
-    },
-
-    async addReactionType(parent, args, { user }) {
-      return await addReactionType(args.reactionTypeName);
     },
 
     async savePost(parent, args, { user }) {

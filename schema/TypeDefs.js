@@ -113,11 +113,6 @@ const typeDefs = gql`
     deletePerson(id: ID!): Boolean
     blockUser(userToBeBlockedId: ID!): Boolean
     unblockUser(userToBeBlockedId: ID!): Boolean
-    reactToPost(postId: ID!, reactionTypeId: ID!): Boolean
-    removeReactionFromPost(postId: ID!, reactionId: ID!): Boolean
-    reactToComment(commentId: ID!, reactionTypeId: ID!): Boolean
-    removeReactionFromComment(reactionId: ID!): Boolean
-    addReactionType(reactionTypeName: String!): Boolean!
 
     savePost(id: ID, content: String, postStatus: String): Post
     deletePost(id: ID!): Int

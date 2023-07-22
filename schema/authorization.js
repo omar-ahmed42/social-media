@@ -16,12 +16,14 @@ const permissions = shield(
       findFriends: isAuthenticated,
       fetchNewsfeed: isAuthenticated,
       findFriendRequests: isAuthenticated,
+      findMessages: isAuthenticated
     },
 
     Mutation: {
       savePost: isAuthenticated,
       deletePost: isAuthenticated,
       saveComment: isAuthenticated,
+      deleteComment: isAuthenticated,
       blockUser: isAuthenticated,
       unblockUser: isAuthenticated,
       unfriend: isAuthenticated,
@@ -29,12 +31,18 @@ const permissions = shield(
       cancelFriendRequest: isAuthenticated,
       acceptFriendRequest: isAuthenticated,
       sendFriendRequest: isAuthenticated,
-      reactToPost: isAuthenticated,
-      removeReactionFromPost: isAuthenticated,
-      reactToComment: isAuthenticated,
-      removeReactionFromComment: isAuthenticated,
-      addReactionType: isAuthenticated,
+      savePostReaction: isAuthenticated,
+      saveCommentReaction: isAuthenticated,
+      savePostAttachment: isAuthenticated,
+      saveCommentAttachment: isAuthenticated,
+      createConversationWithMembers: isAuthenticated,
+      sendMessage: isAuthenticated
     },
+
+    Subscription: {
+      messageSent: isAuthenticated,
+      messageReceived: isAuthenticated
+    }
   },
   { debug: true, allowExternalErrors: true }
 );

@@ -1,7 +1,5 @@
-var neo4j = require('neo4j-driver');
-var cassandra = require('cassandra-driver')
-var mysql = require('mysql2');
-const util = require('util');
+const neo4j = require('neo4j-driver');
+const cassandra = require('cassandra-driver')
 require('dotenv').config();
 
 const { Sequelize } = require('sequelize');
@@ -21,10 +19,10 @@ const connectSequelize = async () => {
   }
 }
 
-var driver = neo4j.driver('neo4j://localhost',
+const driver = neo4j.driver('neo4j://localhost',
     neo4j.auth.basic(process.env.NEO4J_USERNAME, process.env.NEO4J_PASSWORD));
 
-var driverSession = driver.session({database: 'neo4j'});
+const driverSession = driver.session({database: 'neo4j'});
 
 const cassandraClient = new cassandra.Client({
     contactPoints: [`${process.env.CASSANDRA_HOST}`],

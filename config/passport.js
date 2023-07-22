@@ -13,7 +13,6 @@ const options = {
 module.exports = (passport) => {
   passport.use(
     new JwtStrategy(options, async (jwt_payload, done) => {
-      // console.log(jwt_payload);
       let id = jwt_payload.sub;
       try {
         let res = await User.findByPk(id, { attributes: ['id'] });

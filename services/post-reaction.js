@@ -1,10 +1,26 @@
 const { Post, PostStatusEnum } = require('../models/post');
 const { PostReaction } = require('../models/post-reaction');
+const { GraphQLError } = require('graphql');
 
 async function savePostReaction(userId, reactionId, postId) {
   let post = await Post.findByPk(postId);
-  if (!post) return null; // TODO: throw an exception
-  if (post.getDataValue('postStatus') == PostStatusEnum.draft) return null; // TODO: throw an exception
+  if (!post) {
+    throw new GraphQLError('Post not found', {
+      path: 'savePostReaction',
+      extensions: {
+        code: 'NOT_FOUND',
+      },
+    });
+  }
+
+  if (post.getDataValue('postStatus') == PostStatusEnum.draft) {
+    throw new GraphQLError('Forbidden', {
+      path: 'savePostReaction',
+      extensions: {
+        code: 'FORBIDDEN',
+      },
+    });
+  }
 
   let postReaction = await PostReaction.findOne({
     where: {

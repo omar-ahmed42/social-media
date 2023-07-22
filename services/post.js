@@ -2,11 +2,11 @@ const { Post, PostStatusEnum } = require('../models/post');
 const { PostAttachment } = require('../models/post-attachment');
 const { isFriend } = require('./friend');
 const Fanout = require('./fanout.js');
-const { Op, Model } = require('sequelize');
 const { isBlank } = require('../utils/string-utils');
 const { Attachment } = require('../models/attachment');
 const { postCacheRepository } = require('../cache/models/post');
 const { Comment } = require('../models/comment');
+const { GraphQLError } = require('graphql');
 
 async function deletePost(userId, postId) {
   return await Post.destroy({
@@ -47,11 +47,33 @@ async function savePost(userId, postId, msg) {
 }
 
 async function archivePost(userId, postId, msg) {
-  if (!postId) return null; // TODO: Throw an exception
+  if (!postId) {
+    throw new GraphQLError('No post id provided', {
+      path: 'savePost',
+      extensions: {
+        code: 'BAD_USER_INPUT',
+        argumentName: 'id',
+      },
+    });
+  }
 
   let post = await Post.findByPk(postId);
-  if (!post) return null; // TODO: Throw an exception
-  if (post.getDataValue('postStatus') === PostStatusEnum.draft) return null; // TODO: Throw an exception
+  if (!post) {
+    throw new GraphQLError('Post not found', {
+      path: 'savePost',
+      extensions: {
+        code: 'NOT_FOUND',
+      },
+    });
+  }
+  if (post.getDataValue('postStatus') === PostStatusEnum.draft) {
+    throw new GraphQLError('Cannot archive draft post', {
+      path: 'savePost',
+      extensions: {
+        code: 'BAD_USER_INPUT',
+      },
+    });
+  }
   post.content = msg.content; // TODO: If the content is empty, check if there are no attachments or not
   post.postStatus = PostStatusEnum.archived;
   return await post.save();
@@ -66,8 +88,22 @@ async function savePostAsDraft(userId, postId, msg) {
     });
 
   let post = await Post.findByPk(postId);
-  if (!post) return null;
-  if (post.getDataValue('postStatus') !== PostStatusEnum.draft) return null; // throw an exception
+  if (!post) {
+    throw new GraphQLError('Post not found', {
+      path: 'savePost',
+      extensions: {
+        code: 'NOT_FOUND',
+      },
+    });
+  }
+  if (post.getDataValue('postStatus') !== PostStatusEnum.draft) {
+    throw new GraphQLError('Cannot publish a non-draft post', {
+      path: 'savePost',
+      extensions: {
+        code: 'BAD_USER_INPUT',
+      },
+    });
+  }
 
   post.content = msg.content;
   return await post.save();
@@ -86,7 +122,13 @@ async function publishPost(userId, postId, msg) {
       return post;
     }
 
-    return null; // TODO: Throw an exception
+    throw new GraphQLError('Post content is empty', {
+      path: 'savePost',
+      extensions: {
+        code: 'BAD_USER_INPUT',
+        argumentName: 'content',
+      },
+    });
   } else {
     if (!isBlank(msg.content)) {
       const [affectRowCount] = await Post.update(
@@ -100,9 +142,31 @@ async function publishPost(userId, postId, msg) {
       include: [{ model: PostAttachment, include: Attachment }],
     });
 
-    if (!post) return null;
-    if (post.getDataValue('userId') !== userId) return null; // TODO: Throw an exception
-    if (post.getDataValue('PostAttachments')?.length == 0) return null; // TODO: Throw an exception
+    if (!post) {
+      throw new GraphQLError('Post not found', {
+        path: 'savePost',
+        extensions: {
+          code: 'NOT_FOUND',
+        },
+      });
+    }
+    if (post.getDataValue('userId') !== userId) {
+      throw new GraphQLError('Forbidden', {
+        path: 'savePost',
+        extensions: {
+          code: 'FORBIDDEN',
+        },
+      });
+    }
+    if (post.getDataValue('PostAttachments')?.length == 0) {
+      throw new GraphQLError('No content nor attachments provided', {
+        path: 'savePost',
+        extensions: {
+          code: 'BAD_USER_INPUT',
+          argumentName: 'content',
+        },
+      });
+    }
 
     const oldPostStatus = post.getDataValue('postStatus');
     post.set({ content: msg.content, postStatus: PostStatusEnum.published });
@@ -147,21 +211,15 @@ async function findPostByCommentId(commentId) {
     let comment = await Comment.findByPk(commentId, {
       include: {
         model: Post,
-        attributes: [
-          'id',
-          'content',
-          'createdAt',
-          'lastModifiedAt',
-        ],
+        attributes: ['id', 'content', 'createdAt', 'lastModifiedAt'],
         include: {
           model: PostAttachment,
           attributes: [],
           include: {
             model: Attachment,
-            attributes: ['id', 'url']
-          }
-          
-        }
+            attributes: ['id', 'url'],
+          },
+        },
       },
       attributes: [],
     });
@@ -205,5 +263,5 @@ module.exports = {
   deletePost,
   findPostsByUserId,
   savePostModelToCache,
-  findPostByPostAttachmentId
+  findPostByPostAttachmentId,
 };

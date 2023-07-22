@@ -1,11 +1,28 @@
+const { GraphQLError } = require('graphql');
 const { Comment, CommentStatusEnum } = require('../models/comment');
 const { CommentReaction } = require('../models/comment-reaction');
 
 async function saveCommentReaction(userId, reactionId, commentId) {
   let comment = await Comment.findByPk(commentId);
-  if (!comment) return null; // TODO: throw an exception
-  if (comment.getDataValue('commentStatus') == CommentStatusEnum.draft)
-    return null; // TODO: throw an exception
+  if (!comment) {
+    throw new GraphQLError('Comment not found', {
+      path: 'saveCommentReaction',
+      extensions: {
+        code: 'NOT_FOUND',
+        argumentName: 'commentId',
+      },
+    });
+  }
+  
+  if (comment.getDataValue('commentStatus') == CommentStatusEnum.draft) {
+    throw new GraphQLError('Bad user input', {
+      path: 'saveCommentReaction',
+      extensions: {
+        code: 'BAD_USER_INPUT',
+        argumentName: 'commentId',
+      },
+    });
+  }
   
   let commentReaction = await CommentReaction.findOne({
     where: {

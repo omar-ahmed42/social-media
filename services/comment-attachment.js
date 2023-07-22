@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4 } = require('uuid');
 const { storeFile, DEFAULT_UPLOADS_PATH } = require('./attachment');
+const { GraphQLError } = require('graphql');
 
 
 async function saveCommentAttachment(file, userId, commentId) {
@@ -35,7 +36,10 @@ async function saveAttachment(file, userId) {
   if (!fs.existsSync(USER_UPLOADS_DIR))
     fs.mkdirSync(USER_UPLOADS_DIR, { recursive: true });
 
-  if (!isValidCommentAttachmentExtension(fileExtension)) return null; // TODO: Throw an exception
+  if (!isValidCommentAttachmentExtension(fileExtension))
+    throw new GraphQLError('Unsupported media type', {
+      extensions: { code: 'UNSUPPORTED_MEDIA_TYPE', argumentName: 'attachment' },
+    });
 
   const attachmentType = getAttachmentTypeFromExtension(fileExtension);
   let attachment = await Attachment.create({
@@ -76,10 +80,24 @@ function getAttachmentTypeFromExtension(fileExtension) {
 async function addCommentAttachment(userId, commentId, attachmentId) {
   return await sequelize.transaction(async (t) => {
     let comment = await Comment.findByPk(commentId);
-    if (userId !== comment.userId) return null; // TODO: Throw an exception
+    if (userId !== comment.userId) {
+      throw new GraphQLError('Forbidden', {
+        path: 'saveCommentAttachment',
+        extensions: {
+          code: 'FORBIDDEN',
+        },
+      });
+    }
 
     let attachment = await Attachment.findByPk(attachmentId);
-    if (!attachment) return null; // TODO: Throw an exception
+    if (!attachment) {
+      throw new GraphQLError('Attachment not found', {
+        path: 'saveCommentAttachment',
+        extensions: {
+          code: 'NOT_FOUND',
+        },
+      });
+    }
 
     let [commentAttachment] = await CommentAttachment.upsert(
       { commentId: commentId, attachmentId: attachmentId },

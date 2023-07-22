@@ -4,6 +4,7 @@ const { Conversation } = require('../models/conversation');
 const { User } = require('../models/user');
 const { ConversationMember } = require('../models/conversation-members');
 const { isBlank } = require('../utils/string-utils');
+const { GraphQLError } = require('graphql');
 
 async function addConversationWithMembers(
   userId,
@@ -13,7 +14,14 @@ async function addConversationWithMembers(
   try {
     let uniqueMembersIds = new Set(membersIds).add(userId.toString());
     uniqueMembersIds = Array.from(uniqueMembersIds);
-    if (!conversationDetails) return null; // TODO: Throw an exception
+    if (!conversationDetails) {
+      throw new GraphQLError('Bad user input', {
+        path: 'createConversationWithMembers',
+        extensions: {
+          code: 'BAD_USER_INPUT',
+        },
+      });
+    }
     return conversationDetails.isGroup
       ? await createGroupConversation(conversationDetails, uniqueMembersIds)
       : await createConversation(conversationDetails, uniqueMembersIds);
@@ -23,7 +31,18 @@ async function addConversationWithMembers(
 }
 
 async function createGroupConversation(conversationDetails, membersIds) {
-  if (membersIds?.length <= 1) return null; // TODO: Throw an exception
+  if (membersIds?.length <= 1) {
+    throw new GraphQLError(
+      'Group conversations must consist of 2 members atleast',
+      {
+        path: 'createConversationWithMembers',
+        extensions: {
+          code: 'BAD_USER_INPUT',
+          argumentName: 'membersIds',
+        },
+      }
+    );
+  }
 
   if (isBlank(conversationDetails.name))
     conversationDetails.name = await generateGroupName(membersIds);
@@ -36,7 +55,14 @@ async function generateGroupName(membersIds) {
     where: { id: { [Op.in]: membersIds.slice(0, 3) } },
   });
 
-  if (users?.length <= 0) return null; // TODO: Throw an exception
+  if (users?.length <= 0) {
+    throw new GraphQLError('No users found', {
+      path: 'createConversationWithMembers',
+      extensions: {
+        code: 'NOT_FOUND',
+      },
+    });
+  }
   let groupName = users
     .map((user) => user.getDataValue('firstName'))
     .join(', ')
@@ -45,7 +71,15 @@ async function generateGroupName(membersIds) {
 }
 
 async function createConversation(conversationDetails, membersIds) {
-  if (membersIds?.length <= 1) return null; // TODO: Throw an exception
+  if (membersIds?.length <= 1) {
+    throw new GraphQLError('Conversations must contain exactly 2 members', {
+      path: 'createConversationWithMembers',
+      extensions: {
+        code: 'BAD_USER_INPUT',
+        argumentName: 'membersIds',
+      },
+    });
+  }
   let retrievedConversation = await sequelize.query(
     `SELECT * FROM conversation conv
      WHERE conv.is_group = false AND EXISTS (
@@ -60,7 +94,8 @@ async function createConversation(conversationDetails, membersIds) {
     }
   );
 
-  if (retrievedConversation?.length == 1) return retrievedConversation[0].get({plain: true}); // TODO: Throw an exception
+  if (retrievedConversation?.length == 1)
+    return retrievedConversation[0].get({ plain: true }); // TODO: Throw an exception
 
   return await storeConversationWithMembers(conversationDetails, membersIds);
 }

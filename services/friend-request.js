@@ -9,7 +9,7 @@ const {
   DEFAULT_PAGE,
   DEFAULT_PAGE_SIZE,
 } = require('../utils/pagination.js');
-
+const { GraphQLError } = require('graphql');
 const driverSession = require('../db/connect.js').driverSession;
 
 async function findFriendRequests(
@@ -46,8 +46,14 @@ async function findFriendRequests(
 
 async function sendFriendRequest(senderId, receiverId) {
   if (senderId == receiverId) {
-    return null;
-  } // TODO: Throw an exception
+    throw new GraphQLError('Invalid receiver id', {
+      path: 'sendFriendRequest',
+      extensions: {
+        code: 'BAD_USER_INPUT',
+        argumentName: 'receiverId',
+      },
+    });
+  }
   let friendRequest = null;
   await driverSession.executeRead(async (t1) => {
     const result = await t1.run(

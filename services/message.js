@@ -9,14 +9,21 @@ const { isBlank } = require('../utils/string-utils');
 const { ConversationMember } = require('../models/conversation-members');
 const { DEFAULT_PAGE_SIZE } = require('../utils/pagination');
 const { pubsub } = require('../config/pub-sub');
-const { Conversation } = require('../models/conversation');
 const { findConversationAndMembers } = require('./conversation');
+const { GraphQLError } = require('graphql');
 
 async function findMessages(conversationId, userId, messageId) {
   let member = await ConversationMember.findOne({
     where: { conversationId: conversationId, userId: userId },
   });
-  if (!member) return null; // TODO: Throw an exception
+  if (!member) {
+    throw new GraphQLError('Conversation not found', {
+      path: 'findMessages',
+      extensions: {
+        code: 'NOT_FOUND',
+      },
+    });
+  }
 
   return messageId
     ? await findPreviousMessages(conversationId, messageId)
@@ -54,11 +61,23 @@ async function findPreviousMessages(conversationId, messageId) {
 async function addMessage(userId, conversationId, file, messageDetails) {
   let conversation = await findConversationAndMembers(conversationId);
 
-  if (!isMemberOf(conversation, userId)) return null; // TODO: Throw an exception
-  
+  if (!isMemberOf(conversation, userId)) {
+    throw new GraphQLError('Forbidden', {
+      path: 'sendMessage',
+      extensions: {
+        code: 'FORBIDDEN',
+      },
+    });
+  }
+
   let attachment;
   if (file) attachment = await saveAttachment(file, userId);
-  let message = await storeMessage(userId, conversationId, attachment, messageDetails);
+  let message = await storeMessage(
+    userId,
+    conversationId,
+    attachment,
+    messageDetails
+  );
   publishMessage(message, conversation);
   return message;
 }
@@ -74,9 +93,11 @@ function isMemberOf(conversation, userId) {
 async function publishMessage(message, conversation) {
   let members = conversation.ConversationMembers;
   pubsub.publish(`MESSAGE_SENT_${message.senderId}`, { messageSent: message });
-  
+
   members.forEach((member) =>
-    pubsub.publish(`MESSAGE_RECEIVED_${member.userId}`, { messageReceived: message })
+    pubsub.publish(`MESSAGE_RECEIVED_${member.userId}`, {
+      messageReceived: message,
+    })
   );
 }
 
@@ -86,8 +107,23 @@ async function storeMessage(
   attachment,
   messageDetails
 ) {
-  if (!messageDetails) return null; // TODO: Throw an exception
-  if (!attachment && isBlank(messageDetails.content)) return null; // TODO: Throw an exception
+  if (!messageDetails) {
+    throw new GraphQLError('Bad user input', {
+      path: 'sendMessage',
+      extensions: {
+        code: 'BAD_USER_INPUT',
+      },
+    });
+  }
+  if (!attachment && isBlank(messageDetails.content)) {
+    throw new GraphQLError('No message body nor attachment provided', {
+      path: 'sendMessage',
+      extensions: {
+        code: 'BAD_USER_INPUT',
+        argumentName: 'content',
+      },
+    });
+  }
 
   let messageId = TimeUuid.now(); // TODO: Replace it with snowflake
   let query = `INSERT INTO conversation_message(conversation_id, message_id, content, sender_id, attachment, created_at)
@@ -108,7 +144,7 @@ async function storeMessage(
     ],
     { prepare: true }
   );
-  
+
   return {
     id: messageId,
     conversationId: conversationId,
@@ -136,7 +172,15 @@ async function saveAttachment(file, conversationId, userId) {
   if (!fs.existsSync(CONVERSATION_UPLOADS_DIR))
     fs.mkdirSync(CONVERSATION_UPLOADS_DIR, { recursive: true });
 
-  if (!isValidMessageAttachmentExtension(fileExtension)) return null; // TODO: Throw an exception
+  if (!isValidMessageAttachmentExtension(fileExtension)) {
+    throw new GraphQLError('Unsupported media type', {
+      path: 'sendMessage',
+      extensions: {
+        code: 'UNSUPPORTED_MEDIA_TYPE',
+        argumentName: 'attachment',
+      },
+    });
+  }
 
   const attachmentType = getAttachmentTypeFromExtension(fileExtension);
   let attachment = await Attachment.create({

@@ -1,4 +1,6 @@
 const jsonwebtoken = require('jsonwebtoken');
+const { User } = require('../models/user');
+const { getPlain } = require('./model');
 
 function issueJWT(user) {
     const id = user.id;
@@ -23,6 +25,19 @@ function issueJWT(user) {
     }
 }
 
+async function verifyToken(token) {
+    try {
+        const payload = jsonwebtoken.verify(token, process.env.JWT_SECRET_KEY);
+        const user = await User.findByPk(payload.sub, {attributes: ['id']});
+
+        return getPlain(user);
+    } catch (error) {
+        console.error('Error: ', error);
+        return null;
+    }
+}
+
 module.exports = {
-    issueJWT
+    issueJWT,
+    verifyToken
 }

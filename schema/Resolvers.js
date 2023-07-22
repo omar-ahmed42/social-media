@@ -20,14 +20,8 @@ const {
   findCommentsByPostId,
   findCommentByCommentAttachmentId,
 } = require('../services/comment');
-const {
-  blockUser,
-  unblockUser,
-} = require('../services/block');
-const {
-  findFriends,
-  deleteFriendship,
-} = require('../services/friend');
+const { blockUser, unblockUser } = require('../services/block');
+const { findFriends, deleteFriendship } = require('../services/friend');
 const {
   findFriendRequests,
   sendFriendRequest,
@@ -51,7 +45,18 @@ const {
   findPostAttachmentsByPostId,
   transformPostAttachmentsModelToGraphQLPostAttachment,
 } = require('../services/post-attachment');
-const { transformCommentAttachmentsModelToGraphQLCommentAttachment, findCommentAttachmentsByCommentId, saveCommentAttachment } = require('../services/comment-attachment');
+const {
+  transformCommentAttachmentsModelToGraphQLCommentAttachment,
+  findCommentAttachmentsByCommentId,
+  saveCommentAttachment,
+} = require('../services/comment-attachment');
+const { pubsub } = require('../config/pub-sub');
+const {
+  isMember,
+  addConversationWithMembers,
+} = require('../services/conversation');
+const { addMessage, findMessages } = require('../services/message');
+const { withFilter } = require('graphql-subscriptions');
 
 const dateScalar = new GraphQLScalarType({
   name: 'Date',
@@ -99,6 +104,10 @@ const resolvers = {
 
     async fetchNewsfeed(parent, args, { user }) {
       return await fetchNewsfeed(user, args.page, args.pageSize);
+    },
+
+    async findMessages(parent, args, { user }) {
+      return await findMessages(args.conversationId, user, args.messageId);
     },
   },
 
@@ -252,9 +261,39 @@ const resolvers = {
     async savePostAttachment(parent, { attachment, postId }, { user }) {
       return await savePostAttachment(attachment, user, postId);
     },
-    
+
     async saveCommentAttachment(parent, { attachment, commentId }, { user }) {
       return await saveCommentAttachment(attachment, user, commentId);
+    },
+
+    async sendMessage(parent, args, { user }) {
+      return await addMessage(user, args.conversationId, args.file, args);
+    },
+
+    async createConversationWithMembers(parent, args, { user }) {
+      return await addConversationWithMembers(user, args, args.membersIds);
+    },
+  },
+
+  Subscription: {
+    messageSent: {
+      subscribe: withFilter(
+        (_, args, { user }) =>
+          pubsub.asyncIterator(`MESSAGE_SENT_${args.conversationId}`),
+        async ({ messageSent }, variables, { user }) => {
+          const isMatch = messageSent.conversationId == variables.conversationId;
+          return isMatch && (await isMember(messageSent.conversationId, user.id));
+        }
+      ),
+    },
+    messageReceived: {
+      subscribe: withFilter(
+        (parent, args, { user }) =>
+          pubsub.asyncIterator(`MESSAGE_RECEIVED_${user.id}`),
+        async ({ messageReceived }, variables, { user }) => {
+          return await isMember(messageReceived.conversationId, user.id);
+        }
+      ),
     },
   },
 };

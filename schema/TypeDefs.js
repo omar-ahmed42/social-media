@@ -63,6 +63,29 @@ const typeDefs = gql`
     comment: Comment
   }
 
+  type Conversation {
+    id: ID,
+    name: String
+    messages: [Message]
+    users: Person
+    createdAt: Date
+  }
+
+  type Message {
+    id: ID
+    content: String
+    user: Person
+    conversation: Conversation
+    createdAt: Date
+    attachment: MessageAttachment
+  }
+
+  type MessageAttachment {
+    id: ID
+    url: String
+    message: Message
+  }
+
   # Queries
   type Query {
     findPost(id: ID!): Post
@@ -74,6 +97,7 @@ const typeDefs = gql`
       page: Int
       pageSize: Int
     ): [FriendRequest]
+    findMessages(conversationId: ID!, messageId: ID): [Message]
   }
 
   # Mutations
@@ -117,6 +141,14 @@ const typeDefs = gql`
 
     savePostAttachment(attachment: Upload!, postId: ID): PostAttachment
     saveCommentAttachment(attachment: Upload!, commentId: ID): CommentAttachment
+
+    createConversationWithMembers(name: String, isGroup: Boolean!, membersIds: [ID]!): Conversation
+    sendMessage(conversationId: ID, content: String, attachment: Upload): Message
+  }
+
+  type Subscription {
+    messageSent(conversationId: ID!): Message
+    messageReceived: Message
   }
 `;
 

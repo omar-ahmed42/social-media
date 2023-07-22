@@ -10,13 +10,16 @@ async function addConversationWithMembers(
   conversationDetails,
   membersIds
 ) {
-  let uniqueMembersIds = new Set(membersIds);
-  uniqueMembersIds.add(userId);
-  uniqueMembersIds = Array.from(uniqueMembersIds);
-  if (!conversationDetails) return null; // TODO: Throw an exception
-  return conversationDetails.isGroup
-    ? await createGroupConversation(conversationDetails, uniqueMembersIds)
-    : await createConversation(conversationDetails, uniqueMembersIds);
+  try {
+    let uniqueMembersIds = new Set(membersIds).add(userId.toString());
+    uniqueMembersIds = Array.from(uniqueMembersIds);
+    if (!conversationDetails) return null; // TODO: Throw an exception
+    return conversationDetails.isGroup
+      ? await createGroupConversation(conversationDetails, uniqueMembersIds)
+      : await createConversation(conversationDetails, uniqueMembersIds);
+  } catch (error) {
+    console.error(`Error: `, error);
+  }
 }
 
 async function createGroupConversation(conversationDetails, membersIds) {
@@ -46,7 +49,7 @@ async function createConversation(conversationDetails, membersIds) {
   let retrievedConversation = await sequelize.query(
     `SELECT * FROM conversation conv
      WHERE conv.is_group = false AND EXISTS (
-         SELECT 1 FROM conversation_member conv_m WHERE conv.id = conv_m.conversation_id AND conv_m = :member1_id ) 
+         SELECT 1 FROM conversation_member conv_m WHERE conv.id = conv_m.conversation_id AND conv_m.user_id = :member1_id ) 
          AND EXISTS (
             SELECT 1 FROM conversation_member conv_m WHERE conv.id = conv_m.conversation_id AND conv_m.user_id = :member2_id )`,
     {
@@ -57,7 +60,7 @@ async function createConversation(conversationDetails, membersIds) {
     }
   );
 
-  if (retrievedConversation) return null; // TODO: Throw an exception
+  if (retrievedConversation?.length == 1) return retrievedConversation[0].get({plain: true}); // TODO: Throw an exception
 
   return await storeConversationWithMembers(conversationDetails, membersIds);
 }
@@ -68,16 +71,34 @@ async function storeConversationWithMembers(conversationDetails, membersIds) {
     members.push({ userId: memberId });
   }
 
-  return await Conversation.create(
-    {
-      name: conversationDetails.name,
-      isGroup: conversationDetails.isGroup,
-      ConversationMembers: members,
-    },
-    { include: [ConversationMember] }
+  return await sequelize.transaction(
+    async (t) =>
+      await Conversation.create(
+        {
+          name: conversationDetails.name,
+          isGroup: conversationDetails.isGroup,
+          ConversationMembers: members,
+        },
+        { include: [ConversationMember], transaction: t }
+      )
   );
+}
+
+async function findConversationAndMembers(conversationId) {
+  return Conversation.findByPk(conversationId, {
+    include: { model: ConversationMember },
+  }).then((data) => data.get({ plain: true }));
+}
+
+async function isMember(conversationId, userId) {
+  let member = await ConversationMember.findOne({
+    where: { conversationId: conversationId, userId: userId },
+  });
+  return member != null;
 }
 
 module.exports = {
   addConversationWithMembers,
+  findConversationAndMembers,
+  isMember,
 };

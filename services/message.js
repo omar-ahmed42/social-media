@@ -8,6 +8,9 @@ const { storeFile, DEFAULT_UPLOADS_PATH } = require('./attachment');
 const { isBlank } = require('../utils/string-utils');
 const { ConversationMember } = require('../models/conversation-members');
 const { DEFAULT_PAGE_SIZE } = require('../utils/pagination');
+const { pubsub } = require('../config/pub-sub');
+const { Conversation } = require('../models/conversation');
+const { findConversationAndMembers } = require('./conversation');
 
 async function findMessages(conversationId, userId, messageId) {
   let member = await ConversationMember.findOne({
@@ -22,7 +25,7 @@ async function findMessages(conversationId, userId, messageId) {
 
 async function findLatestMessages(conversationId) {
   let query = `
-    SELECT conversation_id, message_id, content, sender_id, attachment, created_at FROM conversation_message
+    SELECT conversation_id AS conversationId, message_id AS id, content, sender_id AS senderId, attachment, created_at AS createdAt FROM conversation_message
     WHERE conversation_id = ? LIMIT ?
     `;
 
@@ -36,7 +39,7 @@ async function findLatestMessages(conversationId) {
 
 async function findPreviousMessages(conversationId, messageId) {
   let query = `
-    SELECT conversation_id, message_id, content, sender_id, attachment, created_at FROM conversation_message
+    SELECT conversation_id AS conversationId, message_id AS id, content, sender_id AS senderId, attachment, created_at AS createdAt FROM conversation_message
     WHERE conversation_id = ? AND message_id < ? LIMIT ?
     `;
 
@@ -49,8 +52,32 @@ async function findPreviousMessages(conversationId, messageId) {
 }
 
 async function addMessage(userId, conversationId, file, messageDetails) {
-  let attachment = await saveAttachment(file, userId);
-  return await storeMessage(userId, conversationId, attachment, messageDetails);
+  let conversation = await findConversationAndMembers(conversationId);
+
+  if (!isMemberOf(conversation, userId)) return null; // TODO: Throw an exception
+  
+  let attachment;
+  if (file) attachment = await saveAttachment(file, userId);
+  let message = await storeMessage(userId, conversationId, attachment, messageDetails);
+  publishMessage(message, conversation);
+  return message;
+}
+
+function isMemberOf(conversation, userId) {
+  for (let member of conversation.ConversationMembers) {
+    if (member.userId == userId) return true;
+  }
+
+  return false;
+}
+
+async function publishMessage(message, conversation) {
+  let members = conversation.ConversationMembers;
+  pubsub.publish(`MESSAGE_SENT_${message.senderId}`, { messageSent: message });
+  
+  members.forEach((member) =>
+    pubsub.publish(`MESSAGE_RECEIVED_${member.userId}`, { messageReceived: message })
+  );
 }
 
 async function storeMessage(
@@ -68,22 +95,23 @@ async function storeMessage(
   let messageAttachment = attachment
     ? { id: attachment.id, url: attachment.url }
     : null;
+
   let createdAt = Date.now();
   await cassandraClient.execute(
     query,
     [
       conversationId,
       messageId,
-      userId,
       messageDetails.content,
+      userId,
       messageAttachment,
-      createdAt,
     ],
     { prepare: true }
   );
+  
   return {
+    id: messageId,
     conversationId: conversationId,
-    messageId: messageId,
     senderId: userId,
     content: messageDetails.content,
     attachment: messageAttachment,

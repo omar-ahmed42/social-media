@@ -19,7 +19,7 @@ const connectSequelize = async () => {
   }
 }
 
-const driver = neo4j.driver('neo4j://localhost',
+const driver = neo4j.driver(`bolt://${process.env.NEO4J_HOST}`,
     neo4j.auth.basic(process.env.NEO4J_USERNAME, process.env.NEO4J_PASSWORD));
 
 const driverSession = driver.session({database: 'neo4j'});

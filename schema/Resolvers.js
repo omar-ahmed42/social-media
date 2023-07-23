@@ -20,7 +20,7 @@ const {
   findCommentsByPostId,
   findCommentByCommentAttachmentId,
 } = require('../services/comment');
-const { blockUser, unblockUser } = require('../services/block');
+const { blockUser, unblockUser, findAllBlockedUsers } = require('../services/block');
 const { findFriends, deleteFriendship } = require('../services/friend');
 const {
   findFriendRequests,
@@ -97,6 +97,10 @@ const resolvers = {
 
     async fetchNewsfeed(parent, args, { user }) {
       return await fetchNewsfeed(user, args.page, args.pageSize);
+    },
+
+    async findAllBlockedUsers(_, args, { user }) {
+      return await findAllBlockedUsers(user);
     },
 
     async findMessages(parent, args, { user }) {
@@ -177,13 +181,11 @@ const resolvers = {
     },
 
     async blockUser(parent, args, { user }) {
-      await blockUser(user, args.userToBeBlockedId);
-      return true;
+      return await blockUser(user, args.userToBeBlockedId);
     },
 
     async unblockUser(parent, args, { user }) {
-      await unblockUser(user, args.userToBeBlockedId);
-      return true;
+      return await unblockUser(user, args.userToBeBlockedId);
     },
 
     async savePost(parent, args, { user }) {

@@ -16,7 +16,8 @@ const permissions = shield(
       findFriends: isAuthenticated,
       fetchNewsfeed: isAuthenticated,
       findFriendRequests: isAuthenticated,
-      findMessages: isAuthenticated
+      findMessages: isAuthenticated,
+      findAllBlockedUsers: isAuthenticated,
     },
 
     Mutation: {
@@ -36,13 +37,13 @@ const permissions = shield(
       savePostAttachment: isAuthenticated,
       saveCommentAttachment: isAuthenticated,
       createConversationWithMembers: isAuthenticated,
-      sendMessage: isAuthenticated
+      sendMessage: isAuthenticated,
     },
 
     Subscription: {
       messageSent: isAuthenticated,
-      messageReceived: isAuthenticated
-    }
+      messageReceived: isAuthenticated,
+    },
   },
   { debug: true, allowExternalErrors: true }
 );

@@ -97,6 +97,7 @@ const typeDefs = gql`
       page: Int
       pageSize: Int
     ): [FriendRequest]
+    findAllBlockedUsers: [Person]
     findMessages(conversationId: ID!, messageId: ID): [Message]
   }
 

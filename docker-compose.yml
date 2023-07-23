@@ -1,0 +1,161 @@
+version: '2'
+services:
+  social-media:
+    container_name: social-media
+    build:
+      context: .
+      dockerfile: app.Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "${SERVER_PORT}:4000"
+    networks:
+      - social-media-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      neo4j:
+        condition: service_started
+      pubsub:
+        condition: service_healthy
+      cassandra_node1:
+        condition: service_healthy
+  
+  mysql:
+    container_name: mysql
+    image: mysql
+    env_file:
+      - mysql.env
+    ports:
+      - "${MYSQL_PORT}:3306"
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3306"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  neo4j:
+    container_name: neo4j
+    image: neo4j
+    env_file:
+      - neo4j.env
+    ports:
+      - "${NEO4J_PORT}:7474"
+      - "${NEO4J_BOLT_PORT}:7687"
+    networks:
+      - social-media-network
+    volumes:
+      - neo4j_data:/data
+  
+  redis:
+    container_name: redis-stack
+    image: redis:latest
+    ports:
+      - "${REDIS_PORT}:6379"
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 60s
+  
+  pubsub:
+    container_name: pubsub_redis
+    image: redis:latest
+    ports:
+      - "${HOST_PUBSUB_PORT}:6379"
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 60s
+
+  cassandra_node1:
+    container_name: cassandra_node1
+    build:
+      context: .
+      dockerfile: cassandra.Dockerfile
+    ports:
+      - "${CASSANDRA_NODE1_PORT}:9042"
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 30s
+      timeout: 30s
+      retries: 15
+      start_period: 60s
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    environment:
+      - CASSANDRA_SEEDS=cassandra_node1,cassandra_node2
+      - CASSANDRA_CLUSTER_NAME=SocialMedia
+      - CASSANDRA_KEYSPACE=social_media
+
+  cassandra_node2:
+    container_name: cassandra_node2
+    image: cassandra
+    ports:
+      - "${CASSANDRA_NODE2_PORT}:9042"
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 30s
+      timeout: 30s
+      retries: 15
+      start_period: 60s
+    volumes:
+      - cassandra_data2:/var/lib/cassandra
+    environment:
+      - CASSANDRA_SEEDS=cassandra_node1,cassandra_node2
+      - CASSANDRA_CLUSTER_NAME=SocialMedia
+      - CASSANDRA_KEYSPACE=social_media
+    depends_on:
+      cassandra_node1:
+        condition: service_healthy
+    
+  cassandra_node3:
+    container_name: cassandra_node3
+    image: cassandra
+    environment:
+      - CASSANDRA_SEEDS=cassandra_node1,cassandra_node2
+      - CASSANDRA_CLUSTER_NAME=SocialMedia
+      - CASSANDRA_KEYSPACE=social_media
+    ports:
+      - "${CASSANDRA_NODE3_PORT}:9042"
+    networks:
+      - social-media-network
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 30s
+      timeout: 30s
+      retries: 15
+      start_period: 60s
+    volumes:
+      - cassandra_data3:/var/lib/cassandra
+    depends_on:
+      cassandra_node2:
+        condition: service_healthy
+networks:
+  social-media-network:
+    driver: bridge
+
+volumes:
+  cassandra_data:
+  cassandra_data2:
+  cassandra_data3:
+  neo4j_data:
+  mysql_data:
